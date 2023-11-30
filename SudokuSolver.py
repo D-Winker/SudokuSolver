@@ -201,17 +201,49 @@ def solver1(_sudoku):
                             if not np.all(nonzeroCounts == n):
                                 continue
 
-                            # Check that all of the squares contain the same values
+                            # Check that all of the chosen squares contain the same values
                             if np.all([np.all(currSquare == currBox[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)]):
                                 # Remove these values from all other squares in the box
                                 for _r in range(startRow,startRow+3):
                                     for _c in range(startCol,startCol+3):
                                         if (row * 3 + col) not in squareIndices:
-                                            potentialValues[_r, _c, np.nonzero(currSquare[row,col,:])] = 0
+                                            potentialValues[_r, _c, np.nonzero(currSquare[row,col,:])[0]-1] = 0
 
-                    if the intersection of N squares in this box is N values, and those N values *only* appear in
-                    those N squares, then all other values in those squares are invalid
-                    (is this redundant because of the above check? Is this necessary? It seems like a pain...)
+
+                    # if the intersection of N squares in this box is N values, and those N values *only* appear in
+                    # those N squares, then all other values in those squares are invalid
+                    if 2 <= np.count_nonzero(mainSet):  # This only makes sense if there are at least two potential values
+                        # Try to find the largest set in common amongst the squares
+                        for n in reversed(range(2, np.min(8, np.count_nonzero(mainSet)))):  # Iterate over combinations of all sizes from size of (mainset) down to 2
+                            for squareIndices in combinations(range(9), n):  # Get all possible combinations of n values from [0,8]
+                                # Only check if the combination of squares involves the current square (this is an arbitrary choice)
+                                if (row * 3 + col) not in squareIndices:
+                                    continue
+
+                                # Determine the appropriate row and column indices for the squares being checked
+                                chosenRows = [(squareIndex // 3) for squareIndex in squareIndices]
+                                chosenCols = [(squareIndex % 3) for squareIndex in squareIndices]
+                                
+                                # Find the intersection of the chosen squares
+                                intersection = reduce(np.intersect1d(currBox[chosenRows, chosenCols, :]))
+
+                                # Check if the length of the intersection is the same as the number of squares intersected
+                                if n == len(intersection):
+                                    # Get the indices of all squares not involved in this intersection
+                                    otherSquareIndices = np.setdiff1d(np.arange(9), np.array(squareIndices))
+                                        
+                                    # Determine the appropriate row and column indices for the squares being checked
+                                    otherRows = [(otherSquareIndex // 3) for otherSquareIndex in otherSquareIndices]
+                                    otherCols = [(otherSquareIndex % 3) for otherSquareIndex in otherSquareIndices]
+
+                                    # Check that the values in the intersection don't appear anywhere else in the box
+                                    if not np.any(intersection == currBox[_r, _c, :] for _r, _c in zip(otherRows, otherCols)):
+                                        # That satisfies the constraint! Now, remove all values except those in the intersection
+                                        # from the intersected squares
+                                        for _r in range(startRow,startRow+3):
+                                            for _c in range(startCol,startCol+3):
+                                                if (row * 3 + col) in squareIndices:
+                                                    potentialValues[_r, _c, np.nonzero(intersection)[0]-1] = 0
 
 
                     # Check values in the row
