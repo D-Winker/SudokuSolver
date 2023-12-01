@@ -3,7 +3,8 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, November 25, 2023
+# Daniel Winker, November 30, 2023
+# TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
 
@@ -138,7 +139,7 @@ def solver1(_sudoku):
     for row in range(9):
         for col in range(9):
             for val in range(1,10):
-                potentialValues[row, col, val] = val
+                potentialValues[row, col, val-1] = val
     
     # Handle the initial values
     for row in range(9):
@@ -158,24 +159,18 @@ def solver1(_sudoku):
                     if val == 0:
                         continue
 
-                    toRemove = []  # Hold all the numbers that need to be removed from the current square
-                    
                     # Get all of the current potential values from this box
                     startRow = 3 * (row // 3)
                     startCol = 3 * (col // 3)
                     currBox = potentialValues[startRow:startRow+3,startCol:startCol+3,:]
                     currSquare = potentialValues[row, col, :]
 
+
                     # Check the values in the box
                     # If the current value in this square doesn't appear anywhere else
                     # in this box, then all other values in this square should be assigned 0
-                    # (and we can skip the row and column checks, because we found this square's value)
-                    tmpBox = currBox.copy()
-                    tmpBox[row, col, :] = 0
-                    if val not in tmpBox:
-                        potentialValues[row, col, :]
-                        toRemove = list(potentialValues[row, col, np.arange(9)!=valueIndex])
-                        
+                    if val not in currBox[np.arange(9)!=row, np.arange(9)!=col, :]:
+                        potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
                     
                     # if N squares contain the same N values and no others, then those values should be removed from 
                     # all other squares in the box. 
@@ -246,22 +241,23 @@ def solver1(_sudoku):
                                                     potentialValues[_r, _c, np.nonzero(intersection)[0]-1] = 0
 
 
-                    # Check values in the row
-                    If the current value appears elsewhere in this row, in a different box, and it only
-                    appears in that box in this row and not any other row, then it should be set to 
-                    zero in this square
+                    # Row and column checks
+                    # If the current value doesn't appear anywhere else in this row or in this column, 
+                    # then all other values in this box should be set to zero
+                    # Check every row and column except this one
+                    if (val not in potentialValues[row, np.arange(9)!=col, :]) or (val not in potentialValues[np.arange(9)!=row, col, :]):
+                        potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
+
+                    # If the current value appears elsewhere in this row or column, in a different box, and 
+                    # it's the only nonzero value in that box, then it should be set to zero in this box
+                    for _i in range(9):
+                        # This if statement reads, "if there's only one nonzero value in the selected square, and that value is `val`,
+                        #                           and that square is not the current square"
+                        if (np.count_nonzero(potentialValues[row, _i, :]) == 1 and np.nonzero(potentialValues[row, _i, :])[0][0] == val or \
+                            np.count_nonzero(potentialValues[_i, col, :]) == 1 and np.nonzero(potentialValues[_i, col, :])[0][0] == val) and \
+                           _i != col and _i != row:
+                             potentialValues[row, col, val-1] = 0
                     
-                    # Check values in the column
-                    If the current value appears elsewhere in this column, in a different box, and it only
-                    appears in that box in this column and not any other column, then it should be set to 
-                    zero in this square
-
-
-
-
-                    potentialValues[row, col, potentialValues[row,col] in toRemove] = 0  # Set all the invalid values to zero
-
-
 
 def solver2(_sudoku):
     # Track the unused numbers in each row, column, and box
