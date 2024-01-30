@@ -3,9 +3,9 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, November 30, 2023
+# Daniel Winker, January 28, 2024
 # TODO: Solve through optimization.
-# TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
+# TODO: Try solving with l9near back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
 
 import time
@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 from pyomo.environ import *
 from itertools import combinations
 from functools import reduce
+from matplotlib.patches import Rectangle
+from copy import deepcopy
 
 # Read all of the text from the file, one line at a time
 textFile = open("sudoku.txt", 'r')
@@ -38,75 +40,77 @@ for line in fileContent:
 sudoku.append(sudokuArr)  # Add the previous sudoku to our list
 
 
-def prettyPlot(_sudoku, _rowNums=[[set({})]]*9, _colNums=[[set({})]]*9, _boxNums=[[set({})]]*9, lastChange=None, scale=2):
+def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[]):
     """
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
     """
+    # TODO: Highlight the numbers involved in the decision to make the relevant change (in green)
+    _sudoku = _sudoku.astype(int)
 
-    fig, ax = plt.subplots()
+    if prevSudoku is None:
+        prevSudoku = _sudoku
+    else:
+        prevSudoku = prevSudoku.astype(int)
 
-    # ___Create the Sudoku grid and row, column, and box visuals___
+    # Create a figure and axis
+    fig, ax = plt.subplots(figsize=(8, 8))
 
-    half = 9 * scale / 2  # Subtract this from things to center it
-
-    # Remove grid lines
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.xaxis.set_ticks_position('none')
-    ax.yaxis.set_ticks_position('none')
-
-    # Remove the outer box
-    ax.spines['top'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-    # Grid
-    for i in range(0, 10):
-        if i % 3 == 0:
-            linewidth = 2  # use a thicker line for the outer lines
-        else:
-            linewidth = 1  # use a thinner line for the inner lines
-
-        plt.plot([0,9*scale],[i*scale,i*scale], color='black', linewidth=linewidth)
-        plt.plot([i*scale,i*scale], [0,9*scale], color='black', linewidth=linewidth)
-
-    # For the rows
-    TODO
-
-    # For the columns
-    TODO 
-
-    # For the boxes
-    TODO
-
-    # Set axis limits
-    ax.set_xlim(-0.5, 9*scale+0.5)
-    ax.set_ylim(-0.5, 9*scale+0.5)
-    
-    # Set equal aspect ratio
-    ax.set_aspect('equal')
-
-    # ___Populate it with numbers___
-
-    # The Sudoku
+    # Iterate through each cell in the 9x9 grid
     for row in range(9):
         for col in range(9):
-            num = _sudoku[row,col]
-            if num != 0:
-                if num - int(num) == 0:
-                    num = int(num)
-                plt.text((8 - col +0.5)*scale, (8 - row +0.5)*scale, num, ha='center', va='center')  # x-coordinate, y-coordinate, text
+            # Extract the 3x3 subgrid for the current cell
+            subgrid = _sudoku[row, col]
+            prevSubgrid = prevSudoku[row, col]
 
-    # The rows
+            # Iterate through each cell in the 3x3 subgrid
+            for subrow in range(3):
+                for subcol in range(3):
+                    valueIndex = subrow * 3 + subcol
+                    value = subgrid[valueIndex]
+                    prevValue = prevSubgrid[valueIndex]
 
-    # The columns
+                    # Draw the value in the 3x3 subgrid cell
+                    if row in currRows and col in currCols and valueIndex in currValIndexes and value == prevValue and prevValue != 0:
+                        # Draw the current value of interest in green, unless the current value was removed
+                        ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(value), fontsize=12, ha='center', va='center', color='green', weight='bold')
+                    
+                    elif value == prevValue:
+                        # If the value didn't change...
+                        if value == 0:
+                            # and it's zero, don't show it
+                            pass  # ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(value), fontsize=12, ha='center', va='center', color='gray')
 
-    # The boxes
+                        else:
+                            # if it's nonzero, show it in black
+                            ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(value), fontsize=12, ha='center', va='center', color='black')
+                    
+                    else:
+                        # If the value did change (i.e. to zero, it was removed), show it in red
+                        ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(prevValue), fontsize=12, ha='center', va='center', color='red', weight='bold')
+                    
+            # Draw a rectangle around the 3x3 subgrid
+            rect = Rectangle((col * 3, 27 - row * 3), 3, -3, linewidth=1, edgecolor='black', facecolor='none')
+            ax.add_patch(rect)
+            
+            if row % 3 == 0 and col % 3 == 0:
+                # Draw thicker rectangles around the 3x3 subgrid of subgrids
+                rect = Rectangle((col * 3, 27 - row * 3), 9, -9, linewidth=3, edgecolor='black', facecolor='none')
+                ax.add_patch(rect)
 
+    # Set axis limits
+    ax.set_xlim(0, 27)
+    ax.set_ylim(0, 27)
 
+    # Hide the axes
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    plt.title(title)
+
+    # Show the plot
     plt.show()
+
 
 
 # Sudoku basics
@@ -148,6 +152,9 @@ def solver1(_sudoku):
             if val != 0:
                 potentialValues[row, col, potentialValues[row,col]!=val] = 0  # Set everything except 'val' to zero
     
+    stepCounter = 0
+    prettyPlot(potentialValues, f"Step: {stepCounter}, initial state")
+
     # Iterate over every square until each square only contains one nonzero value
     solved = False
     while not solved:
@@ -165,22 +172,31 @@ def solver1(_sudoku):
                     currBox = potentialValues[startRow:startRow+3,startCol:startCol+3,:]
                     currSquare = potentialValues[row, col, :]
 
-
                     # Check the values in the box
                     # If the current value in this square doesn't appear anywhere else
                     # in this box, then all other values in this square should be assigned 0
-                    if val not in currBox[np.arange(9)!=row, np.arange(9)!=col, :]:
+                    TODO: This does not work correctly.!!!!!!!!!!!!
+                    if val not in currBox[np.arange(startRow,startRow+3)!=row, np.arange(startCol,startCol+3)!=col, :]:
+                        prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
-                    
+                        stepCounter += 1
+                        prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex])
+
                     # if N squares contain the same N values and no others, then those values should be removed from 
                     # all other squares in the box. 
                     # This is a brute force approach; I'm not sure there's a better way to do this.
                     mainSet = potentialValues[row, col, :]  # Arbitrarily, only check against the current square
-                    if np.count_nonzero(mainSet) == 1:  # Special case
+                    prevValues = deepcopy(potentialValues)
+
+                    if np.count_nonzero(mainSet) == 1:  
+                        # Special case
                         potentialValues[startRow:startRow+3,startCol:startCol+3,valueIndex] = 0  # Note that this value is taken
                         potentialValues[row, col, valueIndex] = valueIndex + 1  # Re-set this value
+                        stepCounter += 1
+                        prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex])
 
-                    elif np.count_nonzero(mainSet) < 9:  # If there are still 9 potential values, there's nothing to check
+                    elif np.count_nonzero(mainSet) < 9:  
+                        # If there are still 9 potential values, there's nothing to check
                         n = np.count_nonzero(mainSet)
                         for squareIndices in combinations(range(9), n):  # Get all possible combinations of n values from [0,8]
                             # Only check this condition for combinations of squares involving the current square
@@ -197,19 +213,23 @@ def solver1(_sudoku):
                                 continue
 
                             # Check that all of the chosen squares contain the same values
-                            if np.all([np.all(currSquare == currBox[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)]):
+                            if np.all([np.all(currSquare == currBox[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)]):         
                                 # Remove these values from all other squares in the box
                                 for _r in range(startRow,startRow+3):
                                     for _c in range(startCol,startCol+3):
                                         if (row * 3 + col) not in squareIndices:
                                             potentialValues[_r, _c, np.nonzero(currSquare[row,col,:])[0]-1] = 0
 
+                                stepCounter += 1
+                                prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)))
 
                     # if the intersection of N squares in this box is N values, and those N values *only* appear in
                     # those N squares, then all other values in those squares are invalid
-                    if 2 <= np.count_nonzero(mainSet):  # This only makes sense if there are at least two potential values
+                    prevValues = deepcopy(potentialValues)
+                    if 2 <= np.count_nonzero(mainSet):  
+                        # This only makes sense if there are at least two potential values
                         # Try to find the largest set in common amongst the squares
-                        for n in reversed(range(2, np.min(8, np.count_nonzero(mainSet)))):  # Iterate over combinations of all sizes from size of (mainset) down to 2
+                        for n in reversed(range(2, min(8, np.count_nonzero(mainSet)))):  # Iterate over combinations of all sizes from size of (mainset) down to 2. (note min, not np.min)
                             for squareIndices in combinations(range(9), n):  # Get all possible combinations of n values from [0,8]
                                 # Only check if the combination of squares involves the current square (this is an arbitrary choice)
                                 if (row * 3 + col) not in squareIndices:
@@ -220,7 +240,7 @@ def solver1(_sudoku):
                                 chosenCols = [(squareIndex % 3) for squareIndex in squareIndices]
                                 
                                 # Find the intersection of the chosen squares
-                                intersection = reduce(np.intersect1d(currBox[chosenRows, chosenCols, :]))
+                                intersection = reduce(np.intersect1d, [currBox[row, col, :] for row in chosenRows for col in chosenCols])
 
                                 # Check if the length of the intersection is the same as the number of squares intersected
                                 if n == len(intersection):
@@ -240,23 +260,48 @@ def solver1(_sudoku):
                                                 if (row * 3 + col) in squareIndices:
                                                     potentialValues[_r, _c, np.nonzero(intersection)[0]-1] = 0
 
+                                        stepCounter += 1
+                                        prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9)))
 
                     # Row and column checks
                     # If the current value doesn't appear anywhere else in this row or in this column, 
                     # then all other values in this box should be set to zero
                     # Check every row and column except this one
                     if (val not in potentialValues[row, np.arange(9)!=col, :]) or (val not in potentialValues[np.arange(9)!=row, col, :]):
+                        prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
+
+                        stepCounter += 1
+                        prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex])
 
                     # If the current value appears elsewhere in this row or column, in a different box, and 
                     # it's the only nonzero value in that box, then it should be set to zero in this box
                     for _i in range(9):
                         # This if statement reads, "if there's only one nonzero value in the selected square, and that value is `val`,
                         #                           and that square is not the current square"
-                        if (np.count_nonzero(potentialValues[row, _i, :]) == 1 and np.nonzero(potentialValues[row, _i, :])[0][0] == val or \
-                            np.count_nonzero(potentialValues[_i, col, :]) == 1 and np.nonzero(potentialValues[_i, col, :])[0][0] == val) and \
-                           _i != col and _i != row:
-                             potentialValues[row, col, val-1] = 0
+                        if (np.count_nonzero(potentialValues[row, _i, :]) == 1 and np.nonzero(potentialValues[row, _i, :])[0][0] == valueIndex and _i != col) or \
+                           (np.count_nonzero(potentialValues[_i, col, :]) == 1 and np.nonzero(potentialValues[_i, col, :])[0][0] == valueIndex and _i != row):
+                             prevValues = deepcopy(potentialValues)
+                             potentialValues[row, col, valueIndex] = 0
+                             stepCounter += 1
+                             if (np.count_nonzero(potentialValues[row, _i, :]) == 1 and np.nonzero(potentialValues[row, _i, :])[0][0] == valueIndex and _i != col):
+                                 prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], list(range(9)))
+                             elif (np.count_nonzero(potentialValues[_i, col, :]) == 1 and np.nonzero(potentialValues[_i, col, :])[0][0] == valueIndex and _i != row):
+                                prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], list(range(9)))
+                             break
+
+        # Check if it's solved
+        solved = True
+        for row in range(9):
+            for col in range(9):
+                if np.count_nonzero(potentialValues[row, col]) > 1:
+                    solved = False
+                    break
+            if not solved:
+                break
+
+    # Return the completed sudoku
+    return np.max(potentialValues, axis=2)
                     
 
 def solver2(_sudoku):
@@ -332,7 +377,7 @@ def solver3(_sudoku):
     model.x = Var(rows, cols, within=PositiveIntegers, bounds=(1,9))
 
     # Row uniqueness constraint
-    TODO: Neither of these constraints uses correct syntax. Maybe we forget the constraint, just optimize to the Sum[1,9] objectives?
+    #TODO: Neither of these constraints uses correct syntax. Maybe we forget the constraint, just optimize to the Sum[1,9] objectives?
     model.row_constraint = Constraint(rows, cols, cols, rule=lambda model, i, j, k: (j != k).implies(model.x[i, j] != model.x[i, k]))
     model.row_constraint = Constraint(rows, cols, cols, rule=lambda model, i, j, k: (j != k) == (model.x[i, j] != model.x[i, k]))
 
@@ -355,7 +400,6 @@ def solver3(_sudoku):
 
 
     return model
-
 
 
 def solver4(_sudoku):
