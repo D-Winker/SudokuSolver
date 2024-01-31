@@ -5,7 +5,7 @@
 #
 # Daniel Winker, January 28, 2024
 # TODO: Solve through optimization.
-# TODO: Try solving with l9near back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
+# TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
 
 import time
@@ -45,7 +45,6 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
     """
-    # TODO: Highlight the numbers involved in the decision to make the relevant change (in green)
     _sudoku = _sudoku.astype(int)
 
     if prevSudoku is None:
@@ -175,8 +174,7 @@ def solver1(_sudoku):
                     # Check the values in the box
                     # If the current value in this square doesn't appear anywhere else
                     # in this box, then all other values in this square should be assigned 0
-                    TODO: This does not work correctly.!!!!!!!!!!!!
-                    if val not in currBox[np.arange(startRow,startRow+3)!=row, np.arange(startCol,startCol+3)!=col, :]:
+                    if (val not in currBox[np.arange(3)!=row%3, :, :]) and (val not in currBox[:, np.arange(3)!=col%3, :]):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
                         stepCounter += 1
