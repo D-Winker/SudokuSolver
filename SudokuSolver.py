@@ -3,7 +3,8 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, January 28, 2024
+# Daniel Winker, January 31, 2024
+# TODO: So far rules 1, 2, 6 have been seen to work. Keep testing to confirm that 3, 4, and 5 work! (even if it requires making up a scenario)
 # TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
@@ -51,6 +52,8 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
         prevSudoku = _sudoku
     else:
         prevSudoku = prevSudoku.astype(int)
+        if np.all(prevSudoku == _sudoku):
+            return
 
     # Create a figure and axis
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -58,7 +61,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     # Iterate through each cell in the 9x9 grid
     for row in range(9):
         for col in range(9):
-            # Extract the 3x3 subgrid for the current cell
+            # Extract the 3x3 subgrid for the current cell (i.e. the potential values for the square)
             subgrid = _sudoku[row, col]
             prevSubgrid = prevSudoku[row, col]
 
@@ -67,26 +70,34 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
                 for subcol in range(3):
                     valueIndex = subrow * 3 + subcol
                     value = subgrid[valueIndex]
-                    prevValue = prevSubgrid[valueIndex]
+                    prevValue = prevSubgrid[valueIndex]  
+
+                    xcoord = col * 3 + subcol + 0.5
+                    ycoord = 27 - (row * 3 + subrow + 0.6)
+                    numberSize = 12
+                    if np.count_nonzero(subgrid) == 1 and np.count_nonzero(prevSubgrid) == 1:
+                        xcoord = col * 3 + 1.4
+                        ycoord = 27 - (row * 3 + 1.6)
+                        numberSize = 30
 
                     # Draw the value in the 3x3 subgrid cell
                     if row in currRows and col in currCols and valueIndex in currValIndexes and value == prevValue and prevValue != 0:
                         # Draw the current value of interest in green, unless the current value was removed
-                        ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(value), fontsize=12, ha='center', va='center', color='green', weight='bold')
+                        ax.text(xcoord, ycoord, str(value), fontsize=numberSize+4, ha='center', va='center', color='green', weight='bold')
                     
                     elif value == prevValue:
                         # If the value didn't change...
                         if value == 0:
                             # and it's zero, don't show it
-                            pass  # ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(value), fontsize=12, ha='center', va='center', color='gray')
+                            pass  # ax.text(xcoord, ycoord, str(value), fontsize=numberSize, ha='center', va='center', color='gray')
 
                         else:
-                            # if it's nonzero, show it in black
-                            ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(value), fontsize=12, ha='center', va='center', color='black')
+                            # if it's nonzero, show it in 
+                            ax.text(xcoord, ycoord, str(value), fontsize=numberSize, ha='center', va='center', color='black')
                     
                     else:
                         # If the value did change (i.e. to zero, it was removed), show it in red
-                        ax.text(col * 3 + subcol + 0.5, 27 - (row * 3 + subrow + 0.6), str(prevValue), fontsize=12, ha='center', va='center', color='red', weight='bold')
+                        ax.text(xcoord, ycoord, str(prevValue), fontsize=numberSize+4, ha='center', va='center', color='blue', weight='bold')
                     
             # Draw a rectangle around the 3x3 subgrid
             rect = Rectangle((col * 3, 27 - row * 3), 3, -3, linewidth=1, edgecolor='black', facecolor='none')
@@ -179,7 +190,7 @@ def solver1(_sudoku):
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
                         stepCounter += 1
                         prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex])
-
+                        
                     # if N squares contain the same N values and no others, then those values should be removed from 
                     # all other squares in the box. 
                     # This is a brute force approach; I'm not sure there's a better way to do this.
@@ -265,7 +276,7 @@ def solver1(_sudoku):
                     # If the current value doesn't appear anywhere else in this row or in this column, 
                     # then all other values in this box should be set to zero
                     # Check every row and column except this one
-                    if (val not in potentialValues[row, np.arange(9)!=col, :]) or (val not in potentialValues[np.arange(9)!=row, col, :]):
+                    if (val not in potentialValues[row, np.arange(9)!=col, :]) and (val not in potentialValues[np.arange(9)!=row, col, :]):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
 
@@ -297,6 +308,8 @@ def solver1(_sudoku):
                     break
             if not solved:
                 break
+
+    prettyPlot(potentialValues, f"Solved! In {stepCounter} steps.")
 
     # Return the completed sudoku
     return np.max(potentialValues, axis=2)
