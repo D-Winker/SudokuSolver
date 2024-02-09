@@ -3,9 +3,10 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, February 1, 2024
+# Daniel Winker, February 8, 2024
 # TODO: Uh oh, one of the sudoku seems to have a problem...figure out which one, and then figure out the problem.
 # TODO: So far rules 1, 2, 6 have been seen to work. Keep testing to confirm that 3, 4, and 5 work! (even if it requires making up a scenario)
+# TODO: Make rule 6 highlight all relevant numbers when pretty plotting.
 # TODO: Save off plots as it solves and make an animation.
 # TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
@@ -60,7 +61,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
     # DEBUG, skip the rules that have already been tested
     # We have to skip after the above check, which rejects checks that don't result in a change
-    if rule in []:#[1, 2, 6]:
+    if rule in [1, 2, 6]:
         return 0
 
     # Create a figure and axis
@@ -177,6 +178,7 @@ def solver1(_sudoku):
 
     # Iterate over every square until each square only contains one nonzero value
     solved = False
+    itr = 0 #DEBUG
     while not solved:
         for row in range(9):
             for col in range(9):
@@ -201,7 +203,7 @@ def solver1(_sudoku):
                         if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1):
                             stepCounter += 1
                         
-                    # if N squares contain the same N values and no others, then those values should be removed from 
+                    # if N squares in the box contain the same N values and no others, then those values should be removed from 
                     # all other squares in the box. 
                     # This is a brute force approach; I'm not sure there's a better way to do this.
                     mainSet = potentialValues[row, col, :]  # Arbitrarily, only check against the current square
@@ -293,6 +295,7 @@ def solver1(_sudoku):
                         if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex]):
                             stepCounter += 1
 
+                    """
                     # If the current value appears elsewhere in this row or column, in a different box, and 
                     # it's the only nonzero value in that box, then it should be set to zero in this box
                     for _i in range(9):
@@ -309,6 +312,57 @@ def solver1(_sudoku):
                                 if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], list(range(9)), 6):
                                     stepCounter += 1
                              break
+                    """
+
+                    #TODO: This rule seems to be broken. It's leading to empty squares. Try testing the row and column rules separately?
+                    # If the current value appears in another box in the same row or column, and in that box
+                    # it only appears in that row or column, then it should be set to zero in this box
+                    prevValues = deepcopy(potentialValues)
+                    # Iterate over the squares in the same row and column as the current square
+                    for _i in range(9):
+                        # Check if any squares in this row contain val (excluding the current box)
+                        if (val in potentialValues[row, _i, :] and not (startCol <= _i < startCol + 3)):
+                            # Check if any other squares in that box, but not in the current row, also contain 'val'
+                            foundVal = False
+                            boxStartCol = 3 * (_i // 3)
+                            for boxRow in range(startRow, startRow+3):
+                                if boxRow != row:
+                                    if val in potentialValues[boxRow, boxStartCol:boxStartCol+3, :]:
+                                        foundVal = True
+                                        break
+
+                            # If none of them contain it, then set the current value to zero
+                            if not foundVal:
+                                potentialValues[row, col, valueIndex] = 0
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6):
+                                    stepCounter += 1
+                                break
+
+
+                        # Check if any squares in this column contain val (excluding the current box)
+                        elif (val in potentialValues[_i, col, :] and not (startRow <= _i < startRow + 3)):
+                            # Check if any other squares in that box, but not in the current column, also contain 'val'
+                            foundVal = False
+                            boxStartRow = 3 * (_i // 3)
+                            for boxCol in range(startCol, startCol+3):
+                                if boxCol != col:
+                                    if val in potentialValues[boxStartRow:boxStartRow+3, boxCol, :]:
+                                        foundVal = True
+                                        break
+
+                            # If none of them contain it, then set the current value to zero
+                            if not foundVal:
+                                potentialValues[row, col, valueIndex] = 0
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6):
+                                    stepCounter += 1
+                                break
+
+
+        # DEBUG did adding this somehow fix the infinite loop problem? This doesn't even plot anything.       
+        itr += 1
+        print(itr, itr % 100)
+        if itr % 100 == 0:
+            prettyPlot(potentialValues, f"Step {stepCounter}.")
 
         # Check if it's solved
         solved = True
@@ -431,6 +485,6 @@ def solver4(_sudoku):
 
 
 print(sudoku[0])
-for i in range(3, 10):
+for i in range(5, 10):
     print(f"Sudoku {i}")
     solver1(sudoku[i])
