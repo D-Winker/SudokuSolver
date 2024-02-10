@@ -3,7 +3,7 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, February 8, 2024
+# Daniel Winker, February 10, 2024
 # TODO: Uh oh, one of the sudoku seems to have a problem...figure out which one, and then figure out the problem.
 # TODO: So far rules 1, 2, 6 have been seen to work. Keep testing to confirm that 3, 4, and 5 work! (even if it requires making up a scenario)
 # TODO: Make rule 6 highlight all relevant numbers when pretty plotting.
@@ -11,6 +11,7 @@
 # TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
+# TODO: Use dad's Monte Carlo idea. Maybe that plus wavefunction collapse?
 
 import time
 import numpy as np
@@ -314,7 +315,6 @@ def solver1(_sudoku):
                              break
                     """
 
-                    #TODO: This rule seems to be broken. It's leading to empty squares. Try testing the row and column rules separately?
                     # If the current value appears in another box in the same row or column, and in that box
                     # it only appears in that row or column, then it should be set to zero in this box
                     prevValues = deepcopy(potentialValues)
@@ -356,6 +356,50 @@ def solver1(_sudoku):
                                 if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6):
                                     stepCounter += 1
                                 break
+
+
+                    # TODO: Sudoku 5 is too hard! I would start guessing, I guess...but maybe the numberphile rules will save us? Implement those.    
+                    # If the above rules failed me, I would start guessing and see if the guesses pan out... but I ran
+                    # across a Numberphile video that might provide a better approach (and be easier to implement)
+                    # Phistomephel Ring https://www.youtube.com/watch?v=pezlnN4X52g
+                    # The set of numbers in the squares ringing the center box and the set of numbers
+                    # in the four groups of four corner boxes are identical.
+                            
+                    # First, get all of the ring values
+                    ringIndices = [(2,2), (2,3), (2,4), (2,5), (2,6), 
+                                   (3,2), (4,2), (5,2), 
+                                   (3,6), (4,6), (5,6), 
+                                   (6,2), (6,3), (6,4), (6,5), (6,6)]
+                    ringSet = set([])
+                    for indices in ringIndices:
+                        ringSet.update(potentialValues[indices[0], indices[1], :])
+
+                    # Then, get all of the corner 
+                    cornerIndices = [(0,0), (0,1), (1,0), (1,1), 
+                                   (7,7), (7,8), (8,7), (8,8), 
+                                   (0,7), (0,8), (1,7), (1,8), 
+                                   (7,0), (8,1), (7,0), (8,1)]
+                    cornerSet = set([])
+                    for indices in cornerIndices:
+                        cornerSet.update(potentialValues[indices[0], indices[1], :])
+
+                    # Find the intersection of the two sets
+                    phistomelSet = ringSet.intersection(cornerSet)
+
+                    # Remove any values not contained in the intersection
+                    prevValues = deepcopy(potentialValues)
+                    for indices in ringIndices:
+                        for i in range(9):
+                            if potentialValues[indices[0], indices[1], i] not in phistomelSet:
+                                potentialValues[indices[0], indices[1], i] = 0
+
+                    for indices in cornerIndices:
+                        for i in range(9):
+                            if potentialValues[indices[0], indices[1], i] not in phistomelSet:
+                                potentialValues[indices[0], indices[1], i] = 0
+                    
+                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, [], [], [], 7):
+                        stepCounter += 1
 
 
         # DEBUG did adding this somehow fix the infinite loop problem? This doesn't even plot anything.       
