@@ -3,9 +3,9 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, February 10, 2024
+# Daniel Winker, March 4, 2024
 # TODO: Uh oh, one of the sudoku seems to have a problem...figure out which one, and then figure out the problem.
-# TODO: So far rules 1, 2, 6 have been seen to work. Keep testing to confirm that 3, 4, and 5 work! (even if it requires making up a scenario)
+# TODO: So far rules 1, 2, 5, 6, 7 have been seen to work. Keep testing to confirm that 3, 4, and 8 work! (even if it requires making up a scenario)
 # TODO: Make rule 6 highlight all relevant numbers when pretty plotting.
 # TODO: Save off plots as it solves and make an animation.
 # TODO: Solve through optimization.
@@ -50,7 +50,6 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
     """
-    
     _sudoku = _sudoku.astype(int)
 
     if prevSudoku is None:
@@ -62,7 +61,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
     # DEBUG, skip the rules that have already been tested
     # We have to skip after the above check, which rejects checks that don't result in a change
-    if rule in [1, 2, 6]:
+    if rule in [1, 2, 5, 6, 7, 8]:
         return 0
 
     # Create a figure and axis
@@ -150,7 +149,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 # must hold that value.
 # *I assume this is a normal approach, but I want to write this without looking up techniques.
 
-def solver1(_sudoku):
+def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
     """
     The naive, brute force way to solve this is
     1. Assume any empty square can hold a number 1 - 9
@@ -159,28 +158,35 @@ def solver1(_sudoku):
     4. Repeat until one valid value remains in each square
     """
 
-    # Instantiate the array of all possible values (1-9 for each square)
-    # I'm sure there's a pythonic way to do this, but in the spirit of the naive method
-    potentialValues = np.zeros((9,9,9))
-    for row in range(9):
-        for col in range(9):
-            for val in range(1,10):
-                potentialValues[row, col, val-1] = val
+    # Determine whether this is the initial call, or a recursive call (which will have more information)
+    if len(_sudoku.shape) == 2:
+        print("Initial setup")
+        # Instantiate the array of all possible values (1-9 for each square)
+        # I'm sure there's a pythonic way to do this, but in the spirit of the naive method
+        potentialValues = np.zeros((9,9,9))
+        for row in range(9):
+            for col in range(9):
+                for val in range(1,10):
+                    potentialValues[row, col, val-1] = val
+        
+        # Handle the initial values
+        for row in range(9):
+            for col in range(9):
+                val = _sudoku[row,col]
+                if val != 0:
+                    potentialValues[row, col, potentialValues[row,col]!=val] = 0  # Set everything except 'val' to zero
+        
+        prettyPlot(potentialValues, f"Step: {stepCounter}, initial state")
     
-    # Handle the initial values
-    for row in range(9):
-        for col in range(9):
-            val = _sudoku[row,col]
-            if val != 0:
-                potentialValues[row, col, potentialValues[row,col]!=val] = 0  # Set everything except 'val' to zero
-    
-    stepCounter = 0
-    prettyPlot(potentialValues, f"Step: {stepCounter}, initial state")
+    elif len(_sudoku.shape) == 3:
+        print(f"Recursed down, depth: {recursionDepth}")
+        potentialValues = _sudoku
+
 
     # Iterate over every square until each square only contains one nonzero value
     solved = False
-    itr = 0 #DEBUG
     while not solved:
+        prevStepCounter = stepCounter  # To track if anything changes
         for row in range(9):
             for col in range(9):
                 for valueIndex in range(9):
@@ -358,8 +364,7 @@ def solver1(_sudoku):
                                 break
 
 
-                    # TODO: Sudoku 5 is too hard! I would start guessing, I guess...but maybe the numberphile rules will save us? Implement those.    
-                    # If the above rules failed me, I would start guessing and see if the guesses pan out... but I ran
+                    # If the above rules failed me, I would normally start guessing and see if the guesses pan out... but I ran
                     # across a Numberphile video that might provide a better approach (and be easier to implement)
                     # Phistomephel Ring https://www.youtube.com/watch?v=pezlnN4X52g
                     # The set of numbers in the squares ringing the center box and the set of numbers
@@ -384,29 +389,79 @@ def solver1(_sudoku):
                         cornerSet.update(potentialValues[indices[0], indices[1], :])
 
                     # Find the intersection of the two sets
-                    phistomelSet = ringSet.intersection(cornerSet)
+                    phistomephelSet = ringSet.intersection(cornerSet)
 
                     # Remove any values not contained in the intersection
                     prevValues = deepcopy(potentialValues)
                     for indices in ringIndices:
                         for i in range(9):
-                            if potentialValues[indices[0], indices[1], i] not in phistomelSet:
+                            if potentialValues[indices[0], indices[1], i] not in phistomephelSet:
                                 potentialValues[indices[0], indices[1], i] = 0
 
                     for indices in cornerIndices:
                         for i in range(9):
-                            if potentialValues[indices[0], indices[1], i] not in phistomelSet:
+                            if potentialValues[indices[0], indices[1], i] not in phistomephelSet:
                                 potentialValues[indices[0], indices[1], i] = 0
                     
                     if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, [], [], [], 7):
                         stepCounter += 1
+                    
 
+        # Check if we've gotten stuck (looped through the entire sudoku with no changes)
+        if prevStepCounter != stepCounter:
+            # Not stuck yet
+            prevStepCounter = stepCounter
+
+        else:
+            print("We're stuck. Time to guess!")
+
+            # Save off the current state,
+            potentialValuesCopy = deepcopy(potentialValues)
+            
+            # Find a square with the fewest number of possible values remaining,
+            nonzero_counts = np.sum(potentialValues != 0, axis=2)  # Count nonzero values in each square
+            if np.any(nonzero_counts == 0):  # If any cells are all zero, there's no solution
+                return False
+            nonzero_counts[nonzero_counts==1] = 9  # We aren't interested in solved squares (1 nonzero value), so change them to a high number
+            min_count = np.min(nonzero_counts)  # Find the smallest number of nonzero values
+            min_indices = np.argwhere(nonzero_counts == min_count)  # Find the indices of the minimum nonzero count
+
+            # Choose the first of these squares with the minimum number of potential values
+            chosenSquare = min_indices[0]
+
+            print("Guess square: ", potentialValues[chosenSquare[0], chosenSquare[1], :])
+            # Find the first nonzero value from that square, then set all the others to zero
+            for chosenValIndex in range(9):
+                if potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex] != 0:
+                    break
+            
+            print("Guess: ", potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex])
+            potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex+1:] = 0
+            prettyPlot(potentialValues, f"Step {stepCounter}, Recursion depth {recursionDepth+1}.", potentialValuesCopy, [chosenSquare[0]], [chosenSquare[1]], [chosenValIndex], 8)
+
+            # Run the solver with this new sudoku. It will return None if the Sudoku is unsolvable.
+            returnedSudoku = solver1(potentialValues, stepCounter, recursionDepth+1, itr)
+            if returnedSudoku is None:
+                print("Guess was wrong. Moving on.")
+                # It failed, so the value that we just selected is wrong. Re-set the potentialValues, but zero that one.
+                # Then, having figured out one more incorrect value, continue on with solving as usual
+                potentialValuesCopy[chosenSquare[0], chosenSquare[1], chosenValIndex] = 0
+                potentialValues = deepcopy(potentialValuesCopy)
+
+            else:
+                # If we get a success returned here, we return it up the stack, or back to the original call
+                return returnedSudoku    
+        
 
         # DEBUG did adding this somehow fix the infinite loop problem? This doesn't even plot anything.       
         itr += 1
-        print(itr, itr % 100)
-        if itr % 100 == 0:
+        print(itr, itr % 1000)
+        if itr % 1000 == 0:
             prettyPlot(potentialValues, f"Step {stepCounter}.")
+
+        # Check if the solution is bad (i.e. one of the squares no longer contains any potential values)
+        if np.any(np.all(potentialValues[:, :, :] == 0, axis=2)):
+            return None
 
         # Check if it's solved
         solved = True
