@@ -3,15 +3,16 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, March 4, 2024
-# TODO: Uh oh, one of the sudoku seems to have a problem...figure out which one, and then figure out the problem.
+# Daniel Winker, March 7, 2024
 # TODO: So far rules 1, 2, 5, 6, 7 have been seen to work. Keep testing to confirm that 3, 4, and 8 work! (even if it requires making up a scenario)
+# TODO: Run through all of the remaining Sudoku and check that solver1 works for them.
 # TODO: Make rule 6 highlight all relevant numbers when pretty plotting.
 # TODO: Save off plots as it solves and make an animation.
 # TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
 # TODO: Use dad's Monte Carlo idea. Maybe that plus wavefunction collapse?
+# TODO: Try the recursive guesser as a solver by itself, no other rules.
 
 import time
 import numpy as np
@@ -61,7 +62,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
     # DEBUG, skip the rules that have already been tested
     # We have to skip after the above check, which rejects checks that don't result in a change
-    if rule in [1, 2, 5, 6, 7, 8]:
+    if rule in [1, 2, 5, 6, 7]:
         return 0
 
     # Create a figure and axis
@@ -151,11 +152,12 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
 def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
     """
-    The naive, brute force way to solve this is
-    1. Assume any empty square can hold a number 1 - 9
-    2. Select one square
-    3. Check the box, row, and column to see if any of the values in the square are invalid
-    4. Repeat until one valid value remains in each square
+    This is more or less how I solve Sudoku by hand. I didn't look up any Sudoku solving techniques to write
+    this function, but I did run across a Numberphile video that taught me a new rule (below as Rule 7), which
+    I included here. It's somewhat niche, but it does come up.
+    This function uses 7 rules and if they don't make any progress, guesses. The basic concept is: every square
+    can contain the values 1 - 9 until proven otherwise. One by one, check the 7 constraints to see what values
+    should be removed, or in some cases, what value must be in a square.
     """
 
     # Determine whether this is the initial call, or a recursive call (which will have more information)
@@ -201,6 +203,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     currBox = potentialValues[startRow:startRow+3,startCol:startCol+3,:]
                     currSquare = potentialValues[row, col, :]
 
+                    # Rule 1
                     # Check the values in the box
                     # If the current value in this square doesn't appear anywhere else
                     # in this box, then all other values in this square should be assigned 0
@@ -210,6 +213,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1):
                             stepCounter += 1
                         
+                    # Rules 2 and 3 (2: special case, 1 value in the square. 3: general case)
                     # if N squares in the box contain the same N values and no others, then those values should be removed from 
                     # all other squares in the box. 
                     # This is a brute force approach; I'm not sure there's a better way to do this.
@@ -248,9 +252,10 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                         if (row * 3 + col) not in squareIndices:
                                             potentialValues[_r, _c, np.nonzero(currSquare[row,col,:])[0]-1] = 0
 
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9))):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), 3):
                                     stepCounter += 1
 
+                    # Rule 4
                     # if the intersection of N squares in this box is N values, and those N values *only* appear in
                     # those N squares, then all other values in those squares are invalid
                     prevValues = deepcopy(potentialValues)
@@ -288,9 +293,10 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                                 if (row * 3 + col) in squareIndices:
                                                     potentialValues[_r, _c, np.nonzero(intersection)[0]-1] = 0
 
-                                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9))):
+                                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9)), 4):
                                             stepCounter += 1
 
+                    # Rule 5
                     # Row and column checks
                     # If the current value doesn't appear anywhere else in this row or in this column, 
                     # then all other values in this box should be set to zero
@@ -299,7 +305,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
 
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex]):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex], 5):
                             stepCounter += 1
 
                     """
@@ -321,6 +327,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                              break
                     """
 
+                    # Rule 6
                     # If the current value appears in another box in the same row or column, and in that box
                     # it only appears in that row or column, then it should be set to zero in this box
                     prevValues = deepcopy(potentialValues)
@@ -328,7 +335,15 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     for _i in range(9):
                         # Check if any squares in this row contain val (excluding the current box)
                         if (val in potentialValues[row, _i, :] and not (startCol <= _i < startCol + 3)):
-                            # Check if any other squares in that box, but not in the current row, also contain 'val'
+                            # Check if 'val' is the only value in that square.
+                            if np.count_nonzero(potentialValues[row, _i, :]) == 1:
+                                # If it is, then set the current value to zero
+                                potentialValues[row, col, valueIndex] = 0
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6):
+                                    stepCounter += 1
+                                break
+
+                            # More generally, check if any other squares in that box, but not in the current row, also contain 'val'
                             foundVal = False
                             boxStartCol = 3 * (_i // 3)
                             for boxRow in range(startRow, startRow+3):
@@ -346,8 +361,16 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
 
 
                         # Check if any squares in this column contain val (excluding the current box)
-                        elif (val in potentialValues[_i, col, :] and not (startRow <= _i < startRow + 3)):
-                            # Check if any other squares in that box, but not in the current column, also contain 'val'
+                        if (val in potentialValues[_i, col, :] and not (startRow <= _i < startRow + 3)):
+                            # Check if 'val' is the only value in that square.
+                            if np.count_nonzero(potentialValues[_i, col, :]) == 1:
+                                # If it is, then set the current value to zero
+                                potentialValues[row, col, valueIndex] = 0
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6):
+                                    stepCounter += 1
+                                break
+
+                            # More generally, check if any other squares in that box, but not in the current column, also contain 'val'
                             foundVal = False
                             boxStartRow = 3 * (_i // 3)
                             for boxCol in range(startCol, startCol+3):
@@ -411,6 +434,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
         if prevStepCounter != stepCounter:
             # Not stuck yet
             prevStepCounter = stepCounter
+            #prettyPlot(potentialValues, f"One more loop down. {stepCounter} steps.")
 
         else:
             print("We're stuck. Time to guess!")
@@ -461,6 +485,8 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
 
         # Check if the solution is bad (i.e. one of the squares no longer contains any potential values)
         if np.any(np.all(potentialValues[:, :, :] == 0, axis=2)):
+            if recursionDepth == 0:
+                prettyPlot(potentialValues, f"Failed! In {stepCounter} steps.")
             return None
 
         # Check if it's solved
@@ -584,6 +610,6 @@ def solver4(_sudoku):
 
 
 print(sudoku[0])
-for i in range(5, 10):
+for i in range(6, 100):
     print(f"Sudoku {i}")
     solver1(sudoku[i])
