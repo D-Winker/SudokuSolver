@@ -3,7 +3,8 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, March 7, 2024
+# Daniel Winker, March 19, 2024
+# Sudoku 6 fails. Why? Are rules 1, 2, 5, 6, 7 actually working?
 # TODO: So far rules 1, 2, 5, 6, 7 have been seen to work. Keep testing to confirm that 3, 4, and 8 work! (even if it requires making up a scenario)
 # TODO: Run through all of the remaining Sudoku and check that solver1 works for them.
 # TODO: Make rule 6 highlight all relevant numbers when pretty plotting.
@@ -46,7 +47,7 @@ for line in fileContent:
 sudoku.append(sudokuArr)  # Add the previous sudoku to our list
 
 
-def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1):
+def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1):
     """
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
@@ -91,10 +92,11 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
                         numberSize = 30
 
                     # Draw the value in the 3x3 subgrid cell
-                    if row in currRows and col in currCols and valueIndex in currValIndexes and value == prevValue and prevValue != 0:
+                    if ((row in currRows and col in currCols and valueIndex in currValIndexes and rule != 7) or 
+                        (rule == 7 and (row, col) in zip(currRows, currCols))) and (value == prevValue and prevValue != 0):
                         # Draw the current value of interest in green, unless the current value was removed
-                        ax.text(xcoord, ycoord, str(value), fontsize=numberSize+4, ha='center', va='center', color='green', weight='bold')
-                    
+                        ax.text(xcoord, ycoord, str(value), fontsize=numberSize+4, ha='center', va='center', color='green', weight='bold') 
+
                     elif value == prevValue:
                         # If the value didn't change...
                         if value == 0:
@@ -210,7 +212,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     if (val not in currBox[np.arange(3)!=row%3, :, :]) and (val not in currBox[:, np.arange(3)!=col%3, :]):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1, stepCount=stepCounter):
                             stepCounter += 1
                         
                     # Rules 2 and 3 (2: special case, 1 value in the square. 3: general case)
@@ -224,7 +226,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         # Special case
                         potentialValues[startRow:startRow+3,startCol:startCol+3,valueIndex] = 0  # Note that this value is taken
                         potentialValues[row, col, valueIndex] = valueIndex + 1  # Re-set this value
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex], 2):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex], 2, stepCount=stepCounter):
                             stepCounter += 1
 
                     elif np.count_nonzero(mainSet) < 9:  
@@ -252,7 +254,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                         if (row * 3 + col) not in squareIndices:
                                             potentialValues[_r, _c, np.nonzero(currSquare[row,col,:])[0]-1] = 0
 
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), 3):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), 3, stepCount=stepCounter):
                                     stepCounter += 1
 
                     # Rule 4
@@ -293,7 +295,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                                 if (row * 3 + col) in squareIndices:
                                                     potentialValues[_r, _c, np.nonzero(intersection)[0]-1] = 0
 
-                                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9)), 4):
+                                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9)), 4, stepCount=stepCounter):
                                             stepCounter += 1
 
                     # Rule 5
@@ -305,7 +307,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
 
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex], 5):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex], 5, stepCount=stepCounter):
                             stepCounter += 1
 
                     """
@@ -339,7 +341,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             if np.count_nonzero(potentialValues[row, _i, :]) == 1:
                                 # If it is, then set the current value to zero
                                 potentialValues[row, col, valueIndex] = 0
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6, stepCount=stepCounter):
                                     stepCounter += 1
                                 break
 
@@ -355,7 +357,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             # If none of them contain it, then set the current value to zero
                             if not foundVal:
                                 potentialValues[row, col, valueIndex] = 0
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6, stepCount=stepCounter):
                                     stepCounter += 1
                                 break
 
@@ -366,7 +368,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             if np.count_nonzero(potentialValues[_i, col, :]) == 1:
                                 # If it is, then set the current value to zero
                                 potentialValues[row, col, valueIndex] = 0
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6, stepCount=stepCounter):
                                     stepCounter += 1
                                 break
 
@@ -382,7 +384,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             # If none of them contain it, then set the current value to zero
                             if not foundVal:
                                 potentialValues[row, col, valueIndex] = 0
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6, stepCount=stepCounter):
                                     stepCounter += 1
                                 break
 
@@ -402,11 +404,11 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     for indices in ringIndices:
                         ringSet.update(potentialValues[indices[0], indices[1], :])
 
-                    # Then, get all of the corner 
+                    # Then, get all of the corner values
                     cornerIndices = [(0,0), (0,1), (1,0), (1,1), 
                                    (7,7), (7,8), (8,7), (8,8), 
                                    (0,7), (0,8), (1,7), (1,8), 
-                                   (7,0), (8,1), (7,0), (8,1)]
+                                   (7,0), (8,0), (7,1), (8,1)]
                     cornerSet = set([])
                     for indices in cornerIndices:
                         cornerSet.update(potentialValues[indices[0], indices[1], :])
@@ -426,7 +428,9 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             if potentialValues[indices[0], indices[1], i] not in phistomephelSet:
                                 potentialValues[indices[0], indices[1], i] = 0
                     
-                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, [], [], [], 7):
+                    currRows = np.concatenate((np.array(cornerIndices)[:,0], np.array(ringIndices)[:,0]))
+                    currCols = np.concatenate((np.array(cornerIndices)[:,1], np.array(ringIndices)[:,1]))
+                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, currRows=currRows, currCols=currCols, currValIndexes=np.arange(9), rule=7, stepCount=stepCounter):
                         stepCounter += 1
                     
 
@@ -434,7 +438,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
         if prevStepCounter != stepCounter:
             # Not stuck yet
             prevStepCounter = stepCounter
-            #prettyPlot(potentialValues, f"One more loop down. {stepCounter} steps.")
+            prettyPlot(potentialValues, f"One more loop down. {stepCounter} steps.", stepCount=stepCounter)
 
         else:
             print("We're stuck. Time to guess!")
