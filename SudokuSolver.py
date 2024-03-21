@@ -3,10 +3,8 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves them.
 #
-# Daniel Winker, March 19, 2024
-# Sudoku 6 fails. Why? Are rules 1, 2, 5, 6, 7 actually working?
-# TODO: So far rules 1, 2, 5, 6, 7 have been seen to work. Keep testing to confirm that 3, 4, and 8 work! (even if it requires making up a scenario)
-# TODO: Run through all of the remaining Sudoku and check that solver1 works for them.
+# Daniel Winker, March 21, 2024
+# TODO: So far rules 1, 2, 5, 6, 7, 8 have been seen to work. Keep testing to confirm that 3, and 4 work! (even if it requires making up a scenario)
 # TODO: Make rule 6 highlight all relevant numbers when pretty plotting.
 # TODO: Save off plots as it solves and make an animation.
 # TODO: Solve through optimization.
@@ -14,6 +12,9 @@
 # TODO: Could Loopy BP or something similar be used here?
 # TODO: Use dad's Monte Carlo idea. Maybe that plus wavefunction collapse?
 # TODO: Try the recursive guesser as a solver by itself, no other rules.
+#
+# Solver 1 is approximately how I would solve a sudoku by hand. 
+# It solved all 50 Sudoku in a blistering *912 seconds* (15 minutes and 12 seconds)
 
 import time
 import numpy as np
@@ -56,14 +57,17 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
     if prevSudoku is None:
         prevSudoku = _sudoku
+        print(f"Rule {rule}")
     else:
         prevSudoku = prevSudoku.astype(int)
+        print(f"Rule... {rule}")
         if np.all(prevSudoku == _sudoku):
+            print("bad")
             return 1
 
     # DEBUG, skip the rules that have already been tested
     # We have to skip after the above check, which rejects checks that don't result in a change
-    if rule in [1, 2, 5, 6, 7]:
+    if rule in [1, 2, 5, 6, 7, 8]:
         return 0
 
     # Create a figure and axis
@@ -92,8 +96,8 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
                         numberSize = 30
 
                     # Draw the value in the 3x3 subgrid cell
-                    if ((row in currRows and col in currCols and valueIndex in currValIndexes and rule != 7) or 
-                        (rule == 7 and (row, col) in zip(currRows, currCols))) and (value == prevValue and prevValue != 0):
+                    if ((row in currRows and col in currCols and valueIndex in currValIndexes and rule not in (3, 7)) or 
+                        (rule in (3, 7) and (row, col) in zip(currRows, currCols))) and (value == prevValue and prevValue != 0):
                         # Draw the current value of interest in green, unless the current value was removed
                         ax.text(xcoord, ycoord, str(value), fontsize=numberSize+4, ha='center', va='center', color='green', weight='bold') 
 
@@ -164,7 +168,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
 
     # Determine whether this is the initial call, or a recursive call (which will have more information)
     if len(_sudoku.shape) == 2:
-        print("Initial setup")
+        #print("Initial setup")
         # Instantiate the array of all possible values (1-9 for each square)
         # I'm sure there's a pythonic way to do this, but in the spirit of the naive method
         potentialValues = np.zeros((9,9,9))
@@ -180,10 +184,10 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                 if val != 0:
                     potentialValues[row, col, potentialValues[row,col]!=val] = 0  # Set everything except 'val' to zero
         
-        prettyPlot(potentialValues, f"Step: {stepCounter}, initial state")
+        #prettyPlot(potentialValues, f"Step: {stepCounter}, initial state")
     
     elif len(_sudoku.shape) == 3:
-        print(f"Recursed down, depth: {recursionDepth}")
+        #print(f"Recursed down, depth: {recursionDepth}")
         potentialValues = _sudoku
 
 
@@ -209,62 +213,87 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     # Check the values in the box
                     # If the current value in this square doesn't appear anywhere else
                     # in this box, then all other values in this square should be assigned 0
+                    """DEBUG
                     if (val not in currBox[np.arange(3)!=row%3, :, :]) and (val not in currBox[:, np.arange(3)!=col%3, :]):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
                         if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1, stepCount=stepCounter):
                             stepCounter += 1
+                    """
                         
                     # Rules 2 and 3 (2: special case, 1 value in the square. 3: general case)
                     # if N squares in the box contain the same N values and no others, then those values should be removed from 
                     # all other squares in the box. 
                     # This is a brute force approach; I'm not sure there's a better way to do this.
-                    mainSet = potentialValues[row, col, :]  # Arbitrarily, only check against the current square
+                    #DEBUG
+                    for iii in [0,1,2,6,7]:
+                        potentialValues[4][4][iii] = 0
+                        potentialValues[4][3][iii] = 0
+                        potentialValues[3][4][iii] = 0
+                        potentialValues[5][4][iii] = 0
+                    itr+=1
+                    if itr%50 == 0:
+                        prettyPlot(potentialValues,"")
+
+
+                    squareVals = potentialValues[row, col, :]  # Arbitrarily, only check against the current square
                     prevValues = deepcopy(potentialValues)
 
-                    if np.count_nonzero(mainSet) == 1:  
+                    if np.count_nonzero(squareVals) == 1:  
                         # Special case
                         potentialValues[startRow:startRow+3,startCol:startCol+3,valueIndex] = 0  # Note that this value is taken
                         potentialValues[row, col, valueIndex] = valueIndex + 1  # Re-set this value
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex], 2, stepCount=stepCounter):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex], rule=2, stepCount=stepCounter):
                             stepCounter += 1
 
-                    elif np.count_nonzero(mainSet) < 9:  
+                    elif np.count_nonzero(squareVals) < 9:
                         # If there are still 9 potential values, there's nothing to check
-                        n = np.count_nonzero(mainSet)
+                        n = np.count_nonzero(squareVals)
                         for squareIndices in combinations(range(9), n):  # Get all possible combinations of n values from [0,8]
+                            # The square index is 0-8 and refers to a particular square within a box
                             # Only check this condition for combinations of squares involving the current square
-                            if (row * 3 + col) not in squareIndices:
+                            if ((row - startRow) * 3 + (col - startCol)) not in squareIndices:
                                 continue
-                            
+                            #todo THIS (rule 3) ISN'T WORKING CORRECTLY. SOMETHING WRONG WITH INDEXING?
+                            #todo Also, try a size other than 2
                             # Determine the appropriate row and column indices for the squares being checked
-                            chosenRows = [(squareIndex // 3) for squareIndex in squareIndices]
-                            chosenCols = [(squareIndex % 3) for squareIndex in squareIndices]
-
+                            chosenRows = np.array([(squareIndex // 3) for squareIndex in squareIndices]) + startRow
+                            chosenCols = np.array([(squareIndex % 3) for squareIndex in squareIndices]) + startCol
+                            
                             # Check that the selected squares only contain n potential values
-                            nonzeroCounts = [np.count_nonzero(currBox[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)]
+                            nonzeroCounts = np.array([np.count_nonzero(potentialValues[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)])
+                            
+                            #DEBUG
+                            if row == 0 and col in [3,4]:
+                                print("..............................")
+                                print(squareVals)
+                                print(chosenRows, chosenCols)
+                                print(np.array([(potentialValues[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)]))
+                                print(nonzeroCounts)
+                            
                             if not np.all(nonzeroCounts == n):
                                 continue
-
+                            
+                            #debugprint(_r, _c, _r * 3 + _c, squareIndices, chosenRows, chosenCols, nonzeroCounts)
                             # Check that all of the chosen squares contain the same values
-                            if np.all([np.all(currSquare == currBox[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)]):         
+                            if np.all(np.array([np.all(currSquare == potentialValues[_r, _c, :]) for _r, _c in zip(chosenRows, chosenCols)])):
                                 # Remove these values from all other squares in the box
-                                for _r in range(startRow,startRow+3):
-                                    for _c in range(startCol,startCol+3):
-                                        if (row * 3 + col) not in squareIndices:
-                                            potentialValues[_r, _c, np.nonzero(currSquare[row,col,:])[0]-1] = 0
+                                for _r in range(3):
+                                    for _c in range(3):
+                                        if (_r * 3 + _c) not in squareIndices:
+                                            potentialValues[startRow+_r, startCol+_c, np.nonzero(currSquare)[0]] = 0
 
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), 3, stepCount=stepCounter):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), rule=3, stepCount=stepCounter):
                                     stepCounter += 1
 
                     # Rule 4
                     # if the intersection of N squares in this box is N values, and those N values *only* appear in
                     # those N squares, then all other values in those squares are invalid
                     prevValues = deepcopy(potentialValues)
-                    if 2 <= np.count_nonzero(mainSet):  
+                    if 2 <= np.count_nonzero(squareVals):  
                         # This only makes sense if there are at least two potential values
                         # Try to find the largest set in common amongst the squares
-                        for n in reversed(range(2, min(8, np.count_nonzero(mainSet)))):  # Iterate over combinations of all sizes from size of (mainset) down to 2. (note min, not np.min)
+                        for n in reversed(range(2, min(8, np.count_nonzero(squareVals)))):  # Iterate over combinations of all sizes from size of (squareVals) down to 2. (note min, not np.min)
                             for squareIndices in combinations(range(9), n):  # Get all possible combinations of n values from [0,8]
                                 # Only check if the combination of squares involves the current square (this is an arbitrary choice)
                                 if (row * 3 + col) not in squareIndices:
@@ -303,12 +332,14 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     # If the current value doesn't appear anywhere else in this row or in this column, 
                     # then all other values in this box should be set to zero
                     # Check every row and column except this one
+                    """DEBUG
                     if (val not in potentialValues[row, np.arange(9)!=col, :]) and (val not in potentialValues[np.arange(9)!=row, col, :]):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
 
                         if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex], 5, stepCount=stepCounter):
                             stepCounter += 1
+                    """
 
                     """
                     # If the current value appears elsewhere in this row or column, in a different box, and 
@@ -328,7 +359,8 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                     stepCounter += 1
                              break
                     """
-
+                    
+                    """DEBUG
                     # Rule 6
                     # If the current value appears in another box in the same row or column, and in that box
                     # it only appears in that row or column, then it should be set to zero in this box
@@ -387,6 +419,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                 if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6, stepCount=stepCounter):
                                     stepCounter += 1
                                 break
+                    """
 
 
                     # If the above rules failed me, I would normally start guessing and see if the guesses pan out... but I ran
@@ -394,7 +427,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     # Phistomephel Ring https://www.youtube.com/watch?v=pezlnN4X52g
                     # The set of numbers in the squares ringing the center box and the set of numbers
                     # in the four groups of four corner boxes are identical.
-                            
+                    """DEBUG        
                     # First, get all of the ring values
                     ringIndices = [(2,2), (2,3), (2,4), (2,5), (2,6), 
                                    (3,2), (4,2), (5,2), 
@@ -432,16 +465,16 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     currCols = np.concatenate((np.array(cornerIndices)[:,1], np.array(ringIndices)[:,1]))
                     if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, currRows=currRows, currCols=currCols, currValIndexes=np.arange(9), rule=7, stepCount=stepCounter):
                         stepCounter += 1
-                    
-
+                    """
+        """DEBUG
         # Check if we've gotten stuck (looped through the entire sudoku with no changes)
         if prevStepCounter != stepCounter:
             # Not stuck yet
             prevStepCounter = stepCounter
-            prettyPlot(potentialValues, f"One more loop down. {stepCounter} steps.", stepCount=stepCounter)
+            #prettyPlot(potentialValues, f"One more loop down. {stepCounter} steps.", stepCount=stepCounter)
 
         else:
-            print("We're stuck. Time to guess!")
+            #print("We're stuck. Time to guess!")
 
             # Save off the current state,
             potentialValuesCopy = deepcopy(potentialValues)
@@ -457,20 +490,20 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
             # Choose the first of these squares with the minimum number of potential values
             chosenSquare = min_indices[0]
 
-            print("Guess square: ", potentialValues[chosenSquare[0], chosenSquare[1], :])
+            #print("Guess square: ", potentialValues[chosenSquare[0], chosenSquare[1], :])
             # Find the first nonzero value from that square, then set all the others to zero
             for chosenValIndex in range(9):
                 if potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex] != 0:
                     break
             
-            print("Guess: ", potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex])
+            #print("Guess: ", potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex])
             potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex+1:] = 0
             prettyPlot(potentialValues, f"Step {stepCounter}, Recursion depth {recursionDepth+1}.", potentialValuesCopy, [chosenSquare[0]], [chosenSquare[1]], [chosenValIndex], 8)
 
             # Run the solver with this new sudoku. It will return None if the Sudoku is unsolvable.
             returnedSudoku = solver1(potentialValues, stepCounter, recursionDepth+1, itr)
             if returnedSudoku is None:
-                print("Guess was wrong. Moving on.")
+                #print("Guess was wrong. Moving on.")
                 # It failed, so the value that we just selected is wrong. Re-set the potentialValues, but zero that one.
                 # Then, having figured out one more incorrect value, continue on with solving as usual
                 potentialValuesCopy[chosenSquare[0], chosenSquare[1], chosenValIndex] = 0
@@ -479,13 +512,15 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
             else:
                 # If we get a success returned here, we return it up the stack, or back to the original call
                 return returnedSudoku    
-        
+        """
 
-        # DEBUG did adding this somehow fix the infinite loop problem? This doesn't even plot anything.       
+        # DEBUG did adding this somehow fix the infinite loop problem? This doesn't even plot anything.   
+        """DEBUG    
         itr += 1
-        print(itr, itr % 1000)
+        #print(itr, itr % 1000)
         if itr % 1000 == 0:
             prettyPlot(potentialValues, f"Step {stepCounter}.")
+        """
 
         # Check if the solution is bad (i.e. one of the squares no longer contains any potential values)
         if np.any(np.all(potentialValues[:, :, :] == 0, axis=2)):
@@ -503,13 +538,19 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
             if not solved:
                 break
 
-    prettyPlot(potentialValues, f"Solved! In {stepCounter} steps.")
+    if solved:
+        print("Solved!")
+        pass#prettyPlot(potentialValues, f"Solved! In {stepCounter} steps.")
+    else:
+        print(f"Failed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
     # Return the completed sudoku
     return np.max(potentialValues, axis=2)
                     
 
 def solver2(_sudoku):
+    # This should be the fully recursive solver
+
     # Track the unused numbers in each row, column, and box
     # Find locations where there is only one available number 
     # between a cell's row, column, and box.
@@ -613,7 +654,9 @@ def solver4(_sudoku):
     """
 
 
-print(sudoku[0])
-for i in range(6, 100):
+startTime = time.time()
+for i, _sudoku in enumerate(sudoku):
     print(f"Sudoku {i}")
-    solver1(sudoku[i])
+    solver1(_sudoku)
+
+print(f"Solver 1 solved all 50 Sudoku in {time.time() - startTime} seconds.")
