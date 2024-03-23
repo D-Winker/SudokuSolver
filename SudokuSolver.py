@@ -14,7 +14,7 @@
 # TODO: Try the recursive guesser as a solver by itself, no other rules. (...or not. The recursive part is written, but it would require a different checker. Hmm...make all rows, columns, and boxes into sets, and check the size of each?)
 #
 # Solver 1 is approximately how I would solve a sudoku by hand. 
-# It solved all 50 Sudoku in 
+# It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
 
 import time
 import numpy as np
