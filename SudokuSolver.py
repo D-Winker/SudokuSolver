@@ -1,17 +1,17 @@
 # Sudoku Solver
 #
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
-# and solves them.
+# and solves the Sudoku in a variety of ways.
 #
-# Daniel Winker, March 22, 2024
-# TODO: So far rules 1, 2, 3, 4, 5, 6, 7, 8 have been seen to work. That's all of them!
-# TODO: Make rule 6 highlight all relevant numbers when pretty plotting. Done!
+# Daniel Winker, March 30, 2024
 # TODO: Save off plots as it solves and make an animation.
 # TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
 # TODO: Use dad's Monte Carlo idea. Maybe that plus wavefunction collapse?
-# TODO: Try the recursive guesser as a solver by itself, no other rules. (...or not. The recursive part is written, but it would require a different checker. Hmm...make all rows, columns, and boxes into sets, and check the size of each?)
+# TODO: Try the recursive guesser as a solver by itself, no other rules. 
+#       (...or not. The recursive part is written, but it would require a different checker. Hmm...make all rows, columns, and boxes into sets, and check the size of each?)
+#       (Actually, if I do the Monte Carlo approach, I need a checker anyway, and why do this recursive guesser *and* a Monte Carlo approach?)
 #
 # Solver 1 is approximately how I would solve a sudoku by hand. 
 # It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
@@ -24,6 +24,7 @@ from itertools import combinations
 from functools import reduce
 from matplotlib.patches import Rectangle
 from copy import deepcopy
+import math
 
 # Read all of the text from the file, one line at a time
 textFile = open("sudoku.txt", 'r')
@@ -53,6 +54,11 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
     """
+    
+    # This function expects a 3D Sudoku, where the third axis is all possible values in each square.
+    if len(_sudoku.shape) == 2:
+        _sudoku = np.concatenate((_sudoku[:, :, np.newaxis], np.zeros((9, 9, 8))), axis=2)
+
     _sudoku = _sudoku.astype(int)
 
     if prevSudoku is None:
@@ -64,8 +70,8 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
     # DEBUG, skip the rules that have already been tested
     # We have to skip after the above check, which rejects checks that don't result in a change
-    if rule in [1, 2, 3, 4, 5, 6, 7, 8]:
-        return 0
+    #if rule in [1, 2, 3, 4, 5, 6, 7, 8]:
+    #    return 0
 
     # Create a figure and axis
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -516,71 +522,204 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
 
     # Return the completed sudoku
     return np.max(potentialValues, axis=2)
-                    
+
+
+def checkSudoku(_sudoku, skipRowCheck=True):
+    """
+    _sudoku is a 9x9 array, and should contain the values 1-9 
+    organized according to the constraints of Sudoku.
+    To check
+    - Convert each row, column, and box into a set.
+    - Check the size of each set.
+    - If all sets have 9 elements, then this is a valid Sudoku.
+    Returns True for a valid Sudoku, and False for an invalid Sudoku.
+    (We can skip checking rows, if we already know the rows are valid)
+    """
+    
+    _sudoku = _sudoku.astype(int)
+    
+    for i in range(9):
+        
+        # Check rows
+        if not skipRowCheck:
+            if len(set(_sudoku[i, :])) != 9:
+                return False
+        
+        # Check columns
+        if len(set(_sudoku[:, i])) != 9:
+            return False
+        
+    # Check boxes
+    for i in range(3):
+        for j in range(3):
+            if len(set(_sudoku[i*3:i*3+3, j*3:j*3+3])) != 9:
+                return False
+        
+    return True
+
 
 def solver2(_sudoku):
-    # This should be the fully recursive solver
-
-    # Track the unused numbers in each row, column, and box
-    # Find locations where there is only one available number 
-    # between a cell's row, column, and box.
-
-    # TODO: I think this isn't working because I don't account for the 
-    #       "row is constrained even though a value hasn't been set" case.
-    #       I think I need sub-column and row sets, and I think if I have those,
-    #       then I don't need the overall column/row sets.
-
-    rowNums = []  # Track available numbers for the rows
-    colNums = []  # Track available numbers for the columns
-    boxNums = []  # Track available numbers for the boxes
-    for col in range(9):
-        rowNums.append(set({1,2,3,4,5,6,7,8,9}))
-        colNums.append(set({1,2,3,4,5,6,7,8,9}))
-        boxNums.append(set({1,2,3,4,5,6,7,8,9}))
-
-    # Update the sets with the initial numbers
-    for i in range(9):
-        # Handle each row
-        nonZeroRowNums = _sudoku[i,:][_sudoku[i,:]!=0]
-        rowNums[i] = rowNums[i] - set(nonZeroRowNums)
-
-        # Handle each column
-        nonZeroColNums = _sudoku[:,i][_sudoku[:,i]!=0]
-        colNums[i] = colNums[i] - set(nonZeroColNums)
-
-        # Handle each box (each 3x3)
-        startRow = 3 * (i // 3)
-        startCol = 3 * (i % 3)
-        nonZeroBoxNums = _sudoku[startRow:startRow+3,startCol:startCol+3][_sudoku[startRow:startRow+3,startCol:startCol+3]!=0]
-        boxNums[i] = boxNums[i] - set(nonZeroBoxNums)
-
-    # Check every cell to see if it's fully constrained. If so, populate it and update the sets.
-    counter = 0
-    prettyPlot(_sudoku)
-    while 0 in _sudoku and counter < 100:
-        counter += 1
-        for row in range(9):
-            for col in range(9):
-                box = 3 * (row // 3) + (col // 3)
-                inter = rowNums[row].intersection(colNums[col], boxNums[box])
-                if len(inter) == 1:
-                    num = inter.pop()
-                    _sudoku[row,col] = num
-                    rowNums[row].remove(num)
-                    colNums[col].remove(num)
-                    boxNums[box].remove(num)
-                    prettyPlot(_sudoku, rowNums, colNums, boxNums, (row,col))
+    """
+    Solve the Sudoku using Monte Carlo methods, i.e. guessing.
+    I had some ideas on reasonable ways to guess at this, but in the 
+    end I went with about close the simplest method I could think of.
+    (This one is my dad's suggestion; he's been doing Monte Carlo
+    simulations to simulate light scattering. Fun fact: he installed 
+    a DOS emulator so he could run a Turbo Pascal version of the simulation. 
+    The emulator is more commonly used to run old video games.)
+    (A second fun fact: if I did the math right, there are 10^50
+    ways to have 9 rows of the numbers 1 - 9)
+    """
     
-    print(f"Counter: {counter}")
-    print(_sudoku)
+    # 1. Determine which values we need to solve for
+    unknownIndices = np.nonzero(_sudoku == 0)
+
+    # 2. Generate a 9x9 array with the integers 1 - 9 in each row
+    randomSudoku = np.tile(np.arange(9) + 1, 9).reshape(9, 9)
+
+    # 3. In each row, set any values that are already provided to zero
+    for row in range(9):
+        randomSudoku[row, np.isin(randomSudoku[row], _sudoku[row])] = 0
+
+    guesses = 0
+
+    while True:
+        guesses += 1
+        if guesses % 100000 == 0:
+            print(guesses)
+
+        # 3. Shuffle each row of randomSudoku
+        _ = np.apply_along_axis(np.random.shuffle, axis=1, arr=randomSudoku)
+
+        # 4. Replace the unknown values in _sudoku with the random values from randomSudoku
+        _sudokuCopy = deepcopy(_sudoku)  # First make a copy in case the result is invalid
+        _sudokuCopy[unknownIndices] = randomSudoku[randomSudoku != 0]
+
+        # 5. Check the Sudoku. If the solution is correct, return it.
+        if checkSudoku(_sudokuCopy):
+            return _sudokuCopy
 
 
 def solver3(_sudoku):
+    """
+    Solve the Sudoku using Monte Carlo methods, i.e. guessing.
+    I'm not sure if solver2 can figure it out in a reasonable amount of time (hours), 
+    so solver3 will try to narrow down the 10^50 possibilities.
+    (and I know there aren't actually that many possibilities for a given Sudoku problem. 
+    At a minimum we're given 17 values; I'll bump that to 18 and assume there are two 
+    given values per row - now there are (7P7)^9 possibilities - 2^33, much better!)
+
+    update: in retrospect, I'm not sure this approach is any better, but it is sightly different!
+
+    This new version will 
+    1. Guess one row at a time, and check each row as it goes. All of
+       this checking will take extra time, but hopefully it narrows things down so much that
+       it's still worth it. Now, sticking with the previous assumptions, the first row can 
+       take on 7P7 states. The second row can't have any numbers in the same place as the 
+       first, making it a derangement, or a deranged permutation. (is it... de-arranged?)
+       The notation is !n, and one way to calculate it is round(n!/e).
+       For the third row now there are two values that can't be used in each spot (this 
+       ignores values already in the lower rows). I can't find a calculation for this 
+       problem online (there is a question out there though 
+       https://math.stackexchange.com/questions/1682662/derangements-relative-to-multiple-arrangements and
+       it seems to be related to Latin squares), so I'll go with some more approximations.
+       If there are already m rows, then m = 0 is nPn, m = 1 is !n, m = n is 0, and m = n - 1 is 1
+       Looking at possibilities for n = 3, 4, or 5, it looks like each increase of m (additional row)
+       more than halves the possiblities. I'll use half as a conservative upper bound.
+       So, my upper bound on the number of possibilities my random Sudoku solver has to work through is
+        = (7P7) * (7!/e) * (7!/e)/2 * (7!/e)/4 * (7!/e)/8 * (7!/e)/16 * (7!/e)/32 * (7!/e)/64 * 1
+        = 5040 * 1854 * 927 * 463 * 232 * 116 * 58 * 29 * 1
+        = 1.8 x 10^20
+       That's a huge improvement! But I was really hoping for fewer. Maybe my estimate is extremely high.
+       (but it's that many per iteration?)
+    
+    2. Cache each guessed row, and check if it's already been guessed, rather than checking if it's valid.
+    
+    I let this run for a while. Over 2 million rows guessed, and more than 500 dead ends. No correct answers!
+    """
+
+    sudokuBackup = deepcopy(_sudoku)
+
+    # 1. Determine which values we need to solve for, per row
+    unknownIndices = []
+    for row in range(9):
+        unknownIndices.append(np.nonzero(_sudoku[row] == 0))
+
+    guesses = 0
+    fullGuesses = 0
+    fails = 0
+
+    # Try until it's successful, at which point the function will return
+    while True:
+        _sudoku = deepcopy(sudokuBackup)
+
+        # Iterate over all of the rows
+        for row in range(9):
+
+            # 2. Generate an array with the integers 1 - 9
+            randomRow = np.arange(9) + 1
+
+            # 3. Set any values that are already provided to zero
+            randomRow[np.isin(randomRow, _sudoku[row])] = 0
+            
+            # Calculate how many permutations are possible with the set of nonzero values
+            possiblePermutations = math.perm(np.count_nonzero(randomRow),np.count_nonzero(randomRow))
+            
+            rowBad = True  # Assume the values are not a properly ordered solution for this row
+
+            # Rearrange the row until it's valid
+            cache = set({})
+            while rowBad:
+                guesses += 1
+
+                # 4. Shuffle the row until we get a permutation that hasn't been tried
+                permutationInCache = True
+                while permutationInCache:
+                    _ = np.random.shuffle(randomRow)
+                    permutationInCache = tuple(randomRow[randomRow!=0]) in cache
+
+                # 5. Replace the unknown values in _sudoku with the randomly ordered values from randomRow
+                _sudokuCopy = deepcopy(_sudoku)  # First make a copy in case the result is invalid
+
+                _sudokuCopy[row][unknownIndices[row]] = randomRow[randomRow != 0]
+                
+                # 6. Check if the Sudoku is still valid after inserting these values
+                #    (we know the row is valid, and we can't necessarily check the boxes, so just check columns)
+                # The below will run, on each column: check that no nonzero values appear two or more times
+                if not np.any(np.apply_along_axis(lambda x: np.any(np.array(np.unique(x[x != 0], return_counts=True)[1] > 1)), axis=0, arr=_sudokuCopy), axis=0):
+                    rowBad = False
+            
+                cache.add(tuple(randomRow[randomRow!=0]))
+
+                # If we've tried everything possible, then some of the earlier guesses are wrong and we need to restart
+                if len(cache) == possiblePermutations:
+                    break
+        
+            # If we've tried everything possible, then some of the earlier guesses are wrong and we need to restart
+            if len(cache) == possiblePermutations:
+                fails += 1
+                print(f"Guesses: {guesses}, Full guesses: {fullGuesses}, Fails: {fails}, Cache size: {len(cache)}")
+                break
+            else:
+                _sudoku = deepcopy(_sudokuCopy)
+
+        if np.count_nonzero(_sudokuCopy) == 0:
+            fullGuesses += 1  # Full guesses will always be zero, right? Because there's only one solution to the Sudoku. (so, we'll get 1 at the end)
+            print(f"Guesses: {guesses}, Full guesses: {fullGuesses}, Fails: {fails}, Cache size: {len(cache)}")
+
+        # 7. Check the Sudoku. If the solution is correct, return it.
+        if checkSudoku(_sudokuCopy):
+            return _sudokuCopy
+
+
+def solver4(_sudoku):
     """
     We can set up the sudoku as an optimization problem.
     Each row, column, and box must contain the whole numbers
     1 - 9, and each cannot contain duplicates.
     I will use pyomo to set up and solve this problem.
+    Or...each row, column, and box must add up to 45, only using whole
+    numbers from 1 - 9. Does that constrain it enough, on it's own?
     """
     # Create a model
     model = ConcreteModel()
@@ -596,8 +735,6 @@ def solver3(_sudoku):
     #TODO: Neither of these constraints uses correct syntax. Maybe we forget the constraint, just optimize to the Sum[1,9] objectives?
     model.row_constraint = Constraint(rows, cols, cols, rule=lambda model, i, j, k: (j != k).implies(model.x[i, j] != model.x[i, k]))
     model.row_constraint = Constraint(rows, cols, cols, rule=lambda model, i, j, k: (j != k) == (model.x[i, j] != model.x[i, k]))
-
-
 
 
 
@@ -624,9 +761,17 @@ def solver4(_sudoku):
     """
 
 
+if False:
+    startTime = time.time()
+    for i, _sudoku in enumerate(sudoku):
+        print(f"Sudoku {i}")
+        solver1(_sudoku)
+
+    print(f"Solver 1 solved all 50 Sudoku in {time.time() - startTime} seconds.")
+
 startTime = time.time()
 for i, _sudoku in enumerate(sudoku):
     print(f"Sudoku {i}")
-    solver1(_sudoku)
+    prettyPlot(solver3(_sudoku))
 
-print(f"Solver 1 solved all 50 Sudoku in {time.time() - startTime} seconds.")
+print(f"Solver 2 solved all 50 Sudoku in {time.time() - startTime} seconds.")
