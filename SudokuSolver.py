@@ -3,18 +3,19 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves the Sudoku in a variety of ways.
 #
-# Daniel Winker, March 30, 2024
+# Daniel Winker, April 5, 2024
 # TODO: Save off plots as it solves and make an animation.
-# TODO: Solve through optimization.
 # TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
 # TODO: Could Loopy BP or something similar be used here?
-# TODO: Use dad's Monte Carlo idea. Maybe that plus wavefunction collapse?
-# TODO: Try the recursive guesser as a solver by itself, no other rules. 
-#       (...or not. The recursive part is written, but it would require a different checker. Hmm...make all rows, columns, and boxes into sets, and check the size of each?)
-#       (Actually, if I do the Monte Carlo approach, I need a checker anyway, and why do this recursive guesser *and* a Monte Carlo approach?)
 #
 # Solver 1 is approximately how I would solve a sudoku by hand. 
-# It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
+#       It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
+# Solvers 2 and 3 attempt to solve a Sudoku by random guessing. I didn't wait around for them to actually get to
+#       a solution. It's possible there's just a bug in there, but there are a lot of ways to combine 81 digits.
+# Solver 4 uses integer linear programming. I think this is the "right" way to solve it. 
+#       It solved all 50 Sudoku in 20 seconds! 0.4 seconds per Sudoku!
+# Solver 5 uses a nonlinear solver and solves a Sudoku based on the sums and products of rows, columns, and boxes. It doesn't work.
+# Solver 6 uses linear back projection (or iterative linear back projection?)
 
 import time
 import numpy as np
@@ -25,6 +26,8 @@ from functools import reduce
 from matplotlib.patches import Rectangle
 from copy import deepcopy
 import math
+from pyomo.environ import *
+
 
 # Read all of the text from the file, one line at a time
 textFile = open("sudoku.txt", 'r')
@@ -49,7 +52,7 @@ for line in fileContent:
 sudoku.append(sudokuArr)  # Add the previous sudoku to our list
 
 
-def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1):
+def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True):
     """
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
@@ -59,7 +62,8 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     if len(_sudoku.shape) == 2:
         _sudoku = np.concatenate((_sudoku[:, :, np.newaxis], np.zeros((9, 9, 8))), axis=2)
 
-    _sudoku = _sudoku.astype(int)
+    if round:
+        _sudoku = _sudoku.astype(int)
 
     if prevSudoku is None:
         prevSudoku = _sudoku
@@ -70,8 +74,8 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 
     # DEBUG, skip the rules that have already been tested
     # We have to skip after the above check, which rejects checks that don't result in a change
-    #if rule in [1, 2, 3, 4, 5, 6, 7, 8]:
-    #    return 0
+    if rule in [1, 2, 3, 4, 5, 6, 7, 8]:
+        return 0
 
     # Create a figure and axis
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -141,7 +145,6 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     plt.show()
 
     return 0
-
 
 
 # Sudoku basics
@@ -518,7 +521,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
         print(f"Solved! In {stepCounter} steps.")
         pass#prettyPlot(potentialValues, f"Solved! In {stepCounter} steps.")
     else:
-        print(f"Failed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print(f"Failed!!!!!!!!!!!!!!!!!!!!!!!!")
 
     # Return the completed sudoku
     return np.max(potentialValues, axis=2)
@@ -569,6 +572,8 @@ def solver2(_sudoku):
     The emulator is more commonly used to run old video games.)
     (A second fun fact: if I did the math right, there are 10^50
     ways to have 9 rows of the numbers 1 - 9)
+
+    I let this run for a while, and after 18 million guesses, I gave up.
     """
     
     # 1. Determine which values we need to solve for
@@ -718,47 +723,255 @@ def solver4(_sudoku):
     Each row, column, and box must contain the whole numbers
     1 - 9, and each cannot contain duplicates.
     I will use pyomo to set up and solve this problem.
-    Or...each row, column, and box must add up to 45, only using whole
-    numbers from 1 - 9. Does that constrain it enough, on it's own?
+    Without looking into it specifically, I think this is the "correct"
+    way to solve a Sudoku programmatically.
     """
-    # Create a model
+    # Create a ConcreteModel
     model = ConcreteModel()
 
-    # Sets
-    rows = RangeSet(1, 9)
-    cols = RangeSet(1, 9)
-
-    # Set up the problem: a 9x9 grid of integers limited to the integers [1,9]
-    model.x = Var(rows, cols, within=PositiveIntegers, bounds=(1,9))
-
-    # Row uniqueness constraint
-    #TODO: Neither of these constraints uses correct syntax. Maybe we forget the constraint, just optimize to the Sum[1,9] objectives?
-    model.row_constraint = Constraint(rows, cols, cols, rule=lambda model, i, j, k: (j != k).implies(model.x[i, j] != model.x[i, k]))
-    model.row_constraint = Constraint(rows, cols, cols, rule=lambda model, i, j, k: (j != k) == (model.x[i, j] != model.x[i, k]))
-
-
-
-    # Each value must appear once in each row
-    model.row_constraint = Constraint(rows, rule=lambda model, i: sum(model.x[i, j] for j in cols) == 1)
-
-    # Each value must appear once in each column
-    model.col_constraint = Constraint(Cols, Values, rule=lambda model, j, v: sum(model.x[i, j, v] for i in Rows) == 1)
-
+    # Define the variables
+    model.x = Var(range(81), domain=Integers, bounds=(1, 9))
     
+    # Define binary indicator variables
+    model.y = Var(range(9), range(9), range(1,10), within=Binary)
+    
+    # Apply a constraint so the sum of indicators in each square (the sum of the value indicators)
+    # is 1. That means there can only be 1 value per square.
+    for row in range(9):
+        for col in range(9):
+            model.add_component(f'sum_{9*row+col}', Constraint(expr=sum(model.y[row, col, val] for val in range(1,10)) == 1))
 
-    # The value each row, column, and box should sum to
-    maxVal = np.sum(np.arange(10))
+    # Tie the indicators to the actual values they indicate
+    for row in range(9):
+        for col in range(9):
+            for val in range(1,10):
+                # Constrain it such that: if the binary indicator 'val' is set for this square, the value in the square is 
+                # greater than or equal to 'val'. If it isn't set, this is "greater than or equal to zero"
+                model.add_component(f'indicate_{row}_{col}_{val}', Constraint(expr=model.x[row * 9 + col] >= val * model.y[row, col, val]))
+                # Constrain it such that: if the binary indicator 'val' is set for this suare, the value in the square is 
+                # less than or equal to 'val'. If it isn't set, this is "less than or equal to 8+val"
+                model.add_component(f'indicate_2_{row}_{col}_{val}', Constraint(expr=model.x[row * 9 + col] <= val + 8 * (1 - model.y[row, col, val])))
+                # The reason we do it this way, instead of something like "if binary(val) then model.x==val" is because
+                # Pyomo is obtuse and the documentation is vast yet seemingly shallow.
 
-    # Objective Function. Minimize the difference between each row, column, and box sum and maxVal
+    ### Add the given values as constraints
+    constraint_index = 0
+    for row in range(9):
+        for col in range(9):
+            if _sudoku[row, col] != 0:
+                model.add_component(f'given_{row}_{col}', Constraint(expr=(model.x[row*9+col])==_sudoku[row,col]))
+                constraint_index += 1
+
+    # Below, a constraint is applied to each row, column, and box
+    # The constraint enforces that for the variables in each set (row, column, or box),
+    # the values 1-9 can only appear once.
+    # The sum of binary indicators, for each value, should be 1. i.e. only one square has the value.
+
+    ### Add the constraints for each row
+    for row in range(9):
+        for val in range(1,10):
+            model.add_component(f'row_{row}_{val}', Constraint(expr=sum(model.y[row, col, val] for col in range(9)) == 1))
+
+    ### Add the constraints for each col
+    for col in range(9):
+        for val in range(1,10):
+            model.add_component(f'col_{col}_{val}', Constraint(expr=sum(model.y[row, col, val] for row in range(9)) == 1))
+
+    ## Add the constraints for each box
+    for br in range(3):
+        for bc in range(3):            
+            for val in range(1,10):
+                model.add_component(f'box_{br}_{bc}_{val}', Constraint(expr=sum(model.y[(3*br+square//3), 3*bc + square%3, val] for square in range(9)) == 1))
+
+    ### Solve the model
+    try:
+        solver = SolverFactory('glpk')
+        solver.solve(model, tee=False)
+    except Exception as e:
+        print(e)
+        print("Solver failed")
+
+    ### Populate the Sudoku with the solution
+    try:
+        for row in range(9):
+            for col in range(9):
+                _sudoku[row,col] = np.round(value(model.x[row*9+col]), decimals=1)
+        
+        return _sudoku
+
+    except Exception as e:
+        print("GLPK failed")
+        #print(e)
+        return None
 
 
-    return model
-
-
-def solver4(_sudoku):
+def solver5(_sudoku):
     """
-    Can we solve a sudoku with linear back projection?
+    Attempt to solve the Sudoku as a system of equations
+    The sum of each row, each column, and each box should be 45
+    The product should be 362,880
+    (Alas, it looks like this doesn't work. I haven't bothered to check if, mathematically, it makes sense - 
+    like if it's appropriately constrained. I would say no, because for one, IPOPT won't respect an integer 
+    constraint. It also won't let me apply more than 81 constraints when there are 81 variables.)
     """
+    # If I add a multiplication constraint (the product of a row/column), then GLPK can't be used.
+    # IPOPT doesn't respect the Integer-domain constraint, so...round the results, I guess.
+    # Also, IPOPT gets upset if there are more constraints than unknowns. From the way this solver
+    # works, there are 9 sum and 9 product constraints for each row, column and box, so 54 altogether.
+    # There are additional constraints for each given value (or we could just set it up with fewer 
+    # unknowns, but the relative values would be the same). So, given 81 total values in a Sudoku,
+    # IPOPT can only handle 81 - 54 = 27 starting values. This is a weird problem to have.
+
+    # Create a ConcreteModel
+    model = ConcreteModel()
+
+    # Define the decision variables (the 81 unknowns). I gave some wiggle room on the bounds.
+    model.x = Var(range(81), domain=PositiveReals, bounds=(1, 9))
+
+    sum_value = np.sum(np.arange(10))
+    product_value = np.product(np.arange(1,10))
+
+    ### Add the given values as constraints
+    constraint_index = 0
+    for row in range(9):
+        for col in range(9):
+            if _sudoku[row, col] != 0:
+                model.add_component(f'given_value_constraint_{constraint_index}', Constraint(expr=(model.x[row*9+col])==_sudoku[row,col]))
+                constraint_index += 1
+
+    ### Add the constraints for each row
+    for row in range(9):
+        # Define the constraint expression (row sum)
+        constraint_expr = model.x[row*9] + model.x[row*9+1] + model.x[row*9+2] + model.x[row*9+3] + model.x[row*9+4] + model.x[row*9+5] + model.x[row*9+6] + model.x[row*9+7] + model.x[row*9+8] == sum_value
+        # Add the constraint to the model
+        model.add_component(f'row_constraint_sum_{row}', Constraint(expr=constraint_expr))
+
+        # Define the constraint expression (row product)
+        constraint_expr = model.x[row*9] * model.x[row*9+1] * model.x[row*9+2] * model.x[row*9+3] * model.x[row*9+4] * model.x[row*9+5] * model.x[row*9+6] * model.x[row*9+7] * model.x[row*9+8] == product_value
+        # Add the constraint to the model
+        model.add_component(f'row_constraint_{row}', Constraint(expr=constraint_expr))
+
+    ### Add the constraints for each col
+    for col in range(9):
+        # Define the constraint expression (col sum)
+        constraint_expr = model.x[col] + model.x[col+9] + model.x[col+2*9] + model.x[col+3*9] + model.x[col+4*9] + model.x[col+5*9] + model.x[col+6*9] + model.x[col+7*9] + model.x[col+8*9] == sum_value
+        # Add the constraint to the model
+        model.add_component(f'col_constraint_sum_{col}', Constraint(expr=constraint_expr))
+
+        # Define the constraint expression (col product)
+        constraint_expr = model.x[col] * model.x[col+9] * model.x[col+2*9] * model.x[col+3*9] * model.x[col+4*9] * model.x[col+5*9] * model.x[col+6*9] * model.x[col+7*9] * model.x[col+8*9] == product_value
+        # Add the constraint to the model
+        model.add_component(f'col_constraint_{col}', Constraint(expr=constraint_expr))
+
+    ## Add the constraints for each box
+    for br in range(3):
+        for bc in range(3):
+            # Define the constraint expression (box sum)
+            constraint_expr = model.x[(3*bc+9*3*br)] + model.x[(3*bc+9*3*br)+1] + model.x[(3*bc+9*3*br)+2] + model.x[(3*bc+9*3*br)+9] + model.x[(3*bc+9*3*br)+10] + model.x[(3*bc+9*3*br)+11] + model.x[(3*bc+9*3*br)+18] + model.x[(3*bc+9*3*br)+19] + model.x[(3*bc+9*3*br)+20] == sum_value
+            # Add the constraint to the model
+            model.add_component(f'box_constraint_sum_{3*bc+9*3*br}', Constraint(expr=constraint_expr))
+            
+            # Define the constraint expression (box product)
+            constraint_expr = model.x[(3*bc+9*3*br)] * model.x[(3*bc+9*3*br)+1] * model.x[(3*bc+9*3*br)+2] * model.x[(3*bc+9*3*br)+9] * model.x[(3*bc+9*3*br)+10] * model.x[(3*bc+9*3*br)+11] * model.x[(3*bc+9*3*br)+18] * model.x[(3*bc+9*3*br)+19] * model.x[(3*bc+9*3*br)+20] == product_value
+            # Add the constraint to the model
+            model.add_component(f'box_constraint_{3*bc+9*3*br}', Constraint(expr=constraint_expr))
+
+    ### Solve the model
+    try:
+        solver = SolverFactory('ipopt')
+        solver.solve(model, tee=False)
+    except Exception as e:
+        print(e)
+        print("Solver failed")
+        print("For reference, there were", np.count_nonzero(_sudoku), "given values")
+
+    ### Populate the Sudoku with the solution
+    try:
+        for row in range(9):
+            for col in range(9):
+                _sudoku[row,col] = np.round(value(model.x[row*9+col]), decimals=1)
+        
+        return _sudoku
+
+    except Exception as e:
+        print("IPOPT failed")
+        #print(e)
+        print("There are", np.count_nonzero(_sudoku), "given values in this Sudoku. IPOPT can only deal with 27 or fewer.")
+        return None
+
+
+def solver6(_sudoku, _badSudoku=None):
+    """
+    Can we solve a sudoku with iterative linear back projection? 
+    _sudoku is the original Sudoku. _badSudoku is the Sudoku after 
+    at least one iteration of LBP.
+    We know that in a correct Sudoku, the rows, columns, and boxes
+    each add up to 45. For an unsolved or incorrect Sudoku, this won't
+    be the case, so we project the error into the unknown squares and 
+    hope it converges to the correct solution.
+    """
+    if _badSudoku is None:
+        _badSudoku = deepcopy(_sudoku)
+
+    # Calculate the nominal sum of any row, column, or box
+    setSum = np.sum(np.arange(10))
+
+    # Get the sums of the current values in each row, in each column, and in each box
+    rowSums = np.sum(_badSudoku, axis=1)
+    colSums = np.sum(_badSudoku, axis=0)
+    boxSums = np.zeros((3,3))
+    for boxrow in range(3):
+        for boxcol in range(3):
+            for square in range(9):
+                boxSums[boxrow, boxcol] += _badSudoku[3*boxrow+square//3, 3*boxcol+square%3]
+    
+    # Count the unknown squares in each row, in each column, and in each box
+    rowEmpties = 9 - np.count_nonzero(_sudoku, axis=1)
+    colEmpties = 9 - np.count_nonzero(_sudoku, axis=0)
+    boxEmpties = np.zeros((3,3))
+    for boxrow in range(3):
+        for boxcol in range(3):
+            for square in range(9):
+                if _sudoku[3*boxrow+square//3, 3*boxcol+square%3] == 0:
+                    boxEmpties[boxrow, boxcol] += 1
+    
+    # Subtract the sums of known values from the nominal sums
+    rowSums = setSum - rowSums
+    colSums = setSum - colSums
+    boxSums = setSum - boxSums
+
+    # Project the results across each row, column, and box (i.e. divide the resulting differences by 
+    # the number of empty squares, and add that value to each empty square in the row, column, or box)
+    rowSums /= rowEmpties
+    colSums /= colEmpties
+    boxSums /= boxEmpties
+
+    # Before adding those values, multiply the unknown values by 3, because we'll divide by three soon
+    _badSudoku[_sudoku==0] *= 3
+
+    for row in range(9):
+        _badSudoku[row, _sudoku[row]==0] += rowSums[row]
+
+    for col in range(9):
+        _badSudoku[_sudoku[:,col]==0,col] += colSums[col]
+    
+    for boxrow in range(3):
+        for boxcol in range(3):
+            for square in range(9):
+                if _sudoku[3*boxrow+square//3, 3*boxcol+square%3] == 0:
+                    boxEmpties[boxrow, boxcol] += boxSums[boxrow, boxcol]
+
+    # Divide the projections by 3, because we've projected back 3 measurements into each square
+    _badSudoku[_sudoku==0] /= 3
+
+    # Round the results and check the Sudoku. If it's correct, return it. Otherwise, iterate (by projecting the errors).
+    #_badSudoku = np.round(_badSudoku)
+
+    if checkSudoku(np.round(_badSudoku)):
+        return np.round(_badSudoku)
+    else:
+        prettyPlot(np.round(_badSudoku,1), round=False)
+        solver6(_sudoku, _badSudoku)
 
 
 if False:
@@ -769,9 +982,29 @@ if False:
 
     print(f"Solver 1 solved all 50 Sudoku in {time.time() - startTime} seconds.")
 
+    startTime = time.time()
+    for i, _sudoku in enumerate(sudoku):
+        sudokuBackup = deepcopy(_sudoku)
+        print(f"Sudoku {i}")
+        result = solver4(_sudoku)
+        if result is not None:
+            pass
+            #prettyPlot(sudokuBackup)
+            #prettyPlot(result)
+
+    print(f"Solver 4 solved all 50 Sudoku in {time.time() - startTime} seconds.")
+
 startTime = time.time()
 for i, _sudoku in enumerate(sudoku):
+    sudokuBackup = deepcopy(_sudoku)
     print(f"Sudoku {i}")
-    prettyPlot(solver3(_sudoku))
+    result = solver6(_sudoku)
+    if result is not None:
+        pass
+        prettyPlot(sudokuBackup)
+        prettyPlot(result)
 
-print(f"Solver 2 solved all 50 Sudoku in {time.time() - startTime} seconds.")
+print(f"Solver 6 solved all 50 Sudoku in {time.time() - startTime} seconds.")
+
+
+
