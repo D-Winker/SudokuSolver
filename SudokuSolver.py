@@ -3,19 +3,18 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves the Sudoku in a variety of ways.
 #
-# Daniel Winker, April 5, 2024
+# Daniel Winker, April 15, 2024
 # TODO: Save off plots as it solves and make an animation.
-# TODO: Try solving with linear back projection. I project back sum of the unused row, column, and box values. Normalize. Scale 1 - 9.
-# TODO: Could Loopy BP or something similar be used here?
 #
 # Solver 1 is approximately how I would solve a sudoku by hand. 
 #       It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
 # Solvers 2 and 3 attempt to solve a Sudoku by random guessing. I didn't wait around for them to actually get to
 #       a solution. It's possible there's just a bug in there, but there are a lot of ways to combine 81 digits.
-# Solver 4 uses integer linear programming. I think this is the "right" way to solve it. 
+# Solver 4 uses integer linear programming. I think this is the "right" way to solve it, based on passing knowledge of Sudoku solvers. 
 #       It solved all 50 Sudoku in 20 seconds! 0.4 seconds per Sudoku!
-# Solver 5 uses a nonlinear solver and solves a Sudoku based on the sums and products of rows, columns, and boxes. It doesn't work.
-# Solver 6 uses linear back projection (or iterative linear back projection?)
+# Solver 5 uses a nonlinear solver and solves a Sudoku based on the sums and products of rows, columns, and boxes. 
+#       It doesn't work (I blame the solver, but there's a note in there and a link - the approach is fundamentally flawed).
+# Solver 6 uses iterative linear back projection. It doesn't work.
 
 import time
 import numpy as np
@@ -161,6 +160,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 # value (given the current knowledge of the board), then that one cell
 # must hold that value.
 # *I assume this is a normal approach, but I want to write this without looking up techniques.
+
 
 def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
     """
@@ -546,16 +546,19 @@ def checkSudoku(_sudoku, skipRowCheck=True):
         # Check rows
         if not skipRowCheck:
             if len(set(_sudoku[i, :])) != 9:
+                print("Failed row check")
                 return False
         
         # Check columns
         if len(set(_sudoku[:, i])) != 9:
+            print("Failed column check")
             return False
         
     # Check boxes
     for i in range(3):
         for j in range(3):
             if len(set(_sudoku[i*3:i*3+3, j*3:j*3+3])) != 9:
+                print("Failed box check")
                 return False
         
     return True
@@ -813,10 +816,14 @@ def solver5(_sudoku):
     (Alas, it looks like this doesn't work. I haven't bothered to check if, mathematically, it makes sense - 
     like if it's appropriately constrained. I would say no, because for one, IPOPT won't respect an integer 
     constraint. It also won't let me apply more than 81 constraints when there are 81 variables.)
+    (Update! I looked into this and found two things, here https://hkopp.github.io/2021/08/solving-sudoku-algebraically
+    1. The sum and product constraints aren't enough.
+    2. I can add an objective to enforce integer values. I might also be able to use an objective
+       to set the given values, rather than a constraint. I'm not sure if that would also over constrain
+       the problem and make IPOPT mad, or if it's a loophole. -> Update: looks like that's not a loophole.
+    Currently this solves 1 out of 50 Sudoku, and it solves it incorrectly.)
     """
-    # If I add a multiplication constraint (the product of a row/column), then GLPK can't be used.
-    # IPOPT doesn't respect the Integer-domain constraint, so...round the results, I guess.
-    # Also, IPOPT gets upset if there are more constraints than unknowns. From the way this solver
+    # IPOPT gets upset if there are more constraints than unknowns. From the way this solver
     # works, there are 9 sum and 9 product constraints for each row, column and box, so 54 altogether.
     # There are additional constraints for each given value (or we could just set it up with fewer 
     # unknowns, but the relative values would be the same). So, given 81 total values in a Sudoku,
@@ -825,11 +832,19 @@ def solver5(_sudoku):
     # Create a ConcreteModel
     model = ConcreteModel()
 
-    # Define the decision variables (the 81 unknowns). I gave some wiggle room on the bounds.
+    # Define the decision variables (the 81 unknowns). If we choose an integer domain, Pyomo will ignore it.
     model.x = Var(range(81), domain=PositiveReals, bounds=(1, 9))
 
+    # Add an objective function to enforce integer solutions
+    #model.add_component(f'integer_obj{i}', Objective(rule=sum((model.x[i]-1)*(model.x[i]-2)*(model.x[i]-3)*(model.x[i]-4)*(model.x[i]-5)*(model.x[i]-6)*(model.x[i]-7)*(model.x[i]-8)*(model.x[i]-9) for i in range(81))))
+    model.integer_obj = Objective(rule=sum((model.x[i]-1)*(model.x[i]-2)*(model.x[i]-3)*(model.x[i]-4)*(model.x[i]-5)*(model.x[i]-6)*(model.x[i]-7)*(model.x[i]-8)*(model.x[i]-9) for i in range(81)))
+    
     sum_value = np.sum(np.arange(10))
     product_value = np.product(np.arange(1,10))
+
+    # Add given value constraints in the form of an objective
+    # For some reason IPOPT fails on every Sudoku if I include this line. Maybe it's generating 81 objectives?
+    #model.given_value_obj = Objective(rule=lambda model: sum(_sudoku[i//9, i%9] - model.x[i] for i in range(81) if _sudoku[i//9, i%9] != 0))
 
     ### Add the given values as constraints
     constraint_index = 0
@@ -889,7 +904,7 @@ def solver5(_sudoku):
     try:
         for row in range(9):
             for col in range(9):
-                _sudoku[row,col] = np.round(value(model.x[row*9+col]), decimals=1)
+                _sudoku[row,col] = np.round(value(model.x[row*9+col]), decimals=0)
         
         return _sudoku
 
@@ -910,6 +925,13 @@ def solver6(_sudoku, _badSudoku=None):
     be the case, so we project the error into the unknown squares and 
     hope it converges to the correct solution.
     """
+    #TODO: This doesn't work! Is there an actual problem? Can I...tune it? Add another constraint or error? 
+    #TODO: Maybe apply GBP or Loopy-BP rather than just round it, or after rounding it. That would at least 
+    #      take care of the "these neighboring values are bad." Or, I could extend the neighbors, and it
+    #      could just solve the whole thing, right? Anyway...
+    # My current guess is: this approach is fundamentally flawed (which makes sense given the discovery in solver5 -
+    # the sum and product constraints aren't sufficient to constrain the Sudoku, so this, essentially just the sum
+    # constraints, had no chance!)
     if _badSudoku is None:
         _badSudoku = deepcopy(_sudoku)
 
@@ -974,37 +996,10 @@ def solver6(_sudoku, _badSudoku=None):
         solver6(_sudoku, _badSudoku)
 
 
-if False:
-    startTime = time.time()
-    for i, _sudoku in enumerate(sudoku):
-        print(f"Sudoku {i}")
-        solver1(_sudoku)
-
-    print(f"Solver 1 solved all 50 Sudoku in {time.time() - startTime} seconds.")
-
-    startTime = time.time()
-    for i, _sudoku in enumerate(sudoku):
-        sudokuBackup = deepcopy(_sudoku)
-        print(f"Sudoku {i}")
-        result = solver4(_sudoku)
-        if result is not None:
-            pass
-            #prettyPlot(sudokuBackup)
-            #prettyPlot(result)
-
-    print(f"Solver 4 solved all 50 Sudoku in {time.time() - startTime} seconds.")
-
-startTime = time.time()
 for i, _sudoku in enumerate(sudoku):
-    sudokuBackup = deepcopy(_sudoku)
     print(f"Sudoku {i}")
-    result = solver6(_sudoku)
-    if result is not None:
-        pass
-        prettyPlot(sudokuBackup)
-        prettyPlot(result)
-
-print(f"Solver 6 solved all 50 Sudoku in {time.time() - startTime} seconds.")
-
-
-
+    startTime = time.time()
+    #result = solver1(_sudoku)
+    result = solver4(_sudoku)
+    print(f"Solved in {time.time() - startTime} seconds.")
+    prettyPlot(result)
