@@ -10,7 +10,7 @@
 #       It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
 # Solvers 2 and 3 attempt to solve a Sudoku by random guessing. I didn't wait around for them to actually get to
 #       a solution. It's possible there's just a bug in there, but there are a lot of ways to combine 81 digits.
-# Solver 4 uses integer linear programming. I think this is the "right" way to solve it, based on passing knowledge of Sudoku solvers. 
+# Solver 4 uses integer programming. I think this is the "right" way to solve it, based on passing knowledge of Sudoku solvers. 
 #       It solved all 50 Sudoku in 20 seconds! 0.4 seconds per Sudoku!
 # Solver 5 uses a nonlinear solver and solves a Sudoku based on the sums and products of rows, columns, and boxes. 
 #       It doesn't work (I blame the solver, but there's a note in there and a link - the approach is fundamentally flawed).
@@ -322,7 +322,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     # Rule 5
                     # Row and column checks
                     # If the current value doesn't appear anywhere else in this row or in this column, 
-                    # then all other values in this box should be set to zero
+                    # then all other values in this square should be set to zero
                     # Check every row and column except this one
                     if (val not in potentialValues[row, np.arange(9)!=col, :]) and (val not in potentialValues[np.arange(9)!=row, col, :]):
                         prevValues = deepcopy(potentialValues)
@@ -411,7 +411,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
 
                     # If the above rules failed me, I would normally start guessing and see if the guesses pan out... but I ran
                     # across a Numberphile video that might provide a better approach (and be easier to implement)
-                    # Phistomephel Ring https://www.youtube.com/watch?v=pezlnN4X52g
+                    # Phistomefel Ring https://www.youtube.com/watch?v=pezlnN4X52g
                     # The set of numbers in the squares ringing the center box and the set of numbers
                     # in the four groups of four corner boxes are identical.     
                     # First, get all of the ring values
@@ -433,18 +433,18 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         cornerSet.update(potentialValues[indices[0], indices[1], :])
 
                     # Find the intersection of the two sets
-                    phistomephelSet = ringSet.intersection(cornerSet)
+                    phistomefelSet = ringSet.intersection(cornerSet)
 
                     # Remove any values not contained in the intersection
                     prevValues = deepcopy(potentialValues)
                     for indices in ringIndices:
                         for i in range(9):
-                            if potentialValues[indices[0], indices[1], i] not in phistomephelSet:
+                            if potentialValues[indices[0], indices[1], i] not in phistomefelSet:
                                 potentialValues[indices[0], indices[1], i] = 0
 
                     for indices in cornerIndices:
                         for i in range(9):
-                            if potentialValues[indices[0], indices[1], i] not in phistomephelSet:
+                            if potentialValues[indices[0], indices[1], i] not in phistomefelSet:
                                 potentialValues[indices[0], indices[1], i] = 0
                     
                     currRows = np.concatenate((np.array(cornerIndices)[:,0], np.array(ringIndices)[:,0]))
