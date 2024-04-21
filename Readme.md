@@ -49,7 +49,41 @@ The set of numbers in the squares ringing the center box and the set of numbers 
 And the informal Rule 8: guess. Guessing is done using recursion: a guess is made by selecting a value for a square. The resulting values are passed, recursively, to solver 1. If solver 1 fails, it will return the failure up the stack, and a different guess will be made. If the guess is correct, the solved Sudoku will be returned up the stack, back to the original call.  
     
 ##### Solver 2: "Random Guessing"  
+This solver randomly places the numbers missing from each row, then checks for validity. If it's invalid, it tries again.  
+  
+I don't see any reason this wouldn't work, but consider the odds of guessing correctly. A uniquely solvable Sudoku has at least 17 given values; let's assume 18 given values for convenience. Let's assume there are 2 given values per row. There are 7P7 ways to place the unknown numbers in each of the 9 rows, so there are (7P7)^9 = 2.1 x 10^33 potential guesses. The odds of guessing the correct solution are very, very close to zero.  
+  
 ##### Solver 3: "Slightly Better Random Guessing"  
+This solver randomly places the numbers missing from each row, one row at a time, and checks for validity after each guess. Considering the overhead of guessing, I think this approach is actually slower than Solver 2, but my rough upper bound puts the number of possible guesses at 1.8 x 10^20. That's a huge improvement! It still isn't reasonable, though. Also, I'm not sure it's even an improvement - as written: the idea is, if each subsequent row is constrained by the preceding row, then there are only 1.8 x 10^20 possibilities. _But_, I don't have a way to generate a valid row, so I generate and guess, which defeats the purpose.  
+  
+Anyway, the details of how I got to that number are in the comment block for Solver 3, in the code. It's an interesting problem, and I couldn't find a solution out there! Hence my upper bound in lieu of an exact solution.  
+  
 ##### Solver 4: "Integer Programming"  
+My passing knowledge of Sudoku solvers tells me that integer programming is the "correct" way to solve a Sudoku in code. (Don't take my word for it, though!)  
+The premise is straightforward. We set up an optimization problem with the basic Sudoku rules  
+1. There are 81 numbers in a Sudoku. These numbers map to a 9x9 grid with 9 rows, 9 columns, and 9 3x3 boxes.  
+2. Each number can only be one of the integers 1 - 9.  
+3. Each number 1 - 9 can only appear once in each row  
+4. ... in each column  
+5. ... and in each box  
+6. Some of these values are already given.  
+  
+Then, allow a solver to find the optimal solution. This approach really pushes off the hard work onto the solver; in this case, the GLPK solver, used through the Pyomo package.  
+  
 ##### Solver 5: "Algebraic Solver"  
-##### Solver 6: "Iterative Linear Back Projection"  
+This approach sets up a series of equations such that each row, column, and box in the Sudoku must add to the sum of the numbers 1 - 9, and their products must be equal to the product of the numbers 1 - 9. There are three reasons why this doesn't work  
+1. The GLPK solver used in Solver 4 allows for an integer-only constraint, but does not work with equations involving multiplication, and the IPOPT nonlinear optimization package doesn't allow for an integer-only constraint. (I used IPOPT and crossed my fingers.)  
+2. IPOPT doesn't work if there are more constraints than unknowns. We have 9 * 6 = 54 constraints for sums and products, so there are often more constraints than unknowns, and the solver fails outright. (This also means that adding our own integer constraint exacerbates this problem.)  
+3. [It turns out these constraints aren't sufficient.](https://hkopp.github.io/2021/08/solving-sudoku-algebraically)  
+  
+_It's entirely possible that 1 and 2 aren't insurpassable problems, and are only a result of my limited knowledge of GLPK, IPOPT, and other available packages, and my decision to not write my own solver._  
+  
+##### Solver 6: "Iterative Linear Back Projection"   
+As of today (April 21, 2024), [Wikipedia has a great video demonstrating linear back projection (LBP)](https://en.wikipedia.org/wiki/Tomographic_reconstruction). LBP is a general concept and can be applied broadly, but it is widely known as a basic way to reconstruct X-Ray CT scans. Imagine an X-Ray machine rotates around a person. It takes measurements of a 2D slice of their body from many angles. At each angle the measurement only shows the amount of signal that passed through the body. Now, flip this scenario. At each angle, project a 'ray' that is scaled by the measurement. Do this at all angles, and sum together the overlapping rays. The result is an image of the subject.  
+  
+Following this approach, we know the "measurement" of each row, column, and box of a Sudoku should be 45 - i.e. the sum of the values 1 - 9. We take each of these sums and subtract from it the relevant values that are given to us. The remaining value is divided by the number of unknown squares in the row, column, or box, and is "projected" into the squares. The values projected into the squares are summed, and divided by three (because there are three projections). The values can then be clamped, either to the range 1 - 9, or such that they are integers.  
+  
+The result of LBP may not be correct - i.e. if we simulate the measurement process (summing rows, columns, and boxes) they might not add to the "measured" values, so we can repeat the LBP process by projecting the errors onto the produced "image." This repeated process makes it iterative linear back projection (ILBP).  
+  
+As mentioned in Solver 5, the sum and product constraints are not sufficient to constrain a Sudoku, so there's no reason to think the sum by itself would constrain it - which is essentially assumed here.  
+  
