@@ -1,8 +1,7 @@
 # Sudoku Solver  
-  
-In the last 19 years I've played through XX of the Sudoku in the Nintendo DS game Brain Age.  
-I have YY Sudoku remaining.  
-  
+   
+I've played through 53 of the 120 Sudoku in the Nintendo DS game Brain Age.  
+It's been 19 years.  
 So, I decided it was time to write a Sudoku solver. For the sake of the exercise, I started this project without looking into best practices, the current state of the art, or the hundreds of existing Sudoku solver packages, open source projects, and college homework assignments that must exist. In the end I wrote six different solvers. Two of them work, two of them do not work, and two of them might work if they were able to run for a really, really long time. The solvers are described in more detail below.  
   
 SudokuSolver.py contains the six solvers, a function to draw out the Sudoku (complete, incomplete, and in-progress), a function to check a Sudoku, and code to read in and format the Sudoku in the text file sudoku.txt  
