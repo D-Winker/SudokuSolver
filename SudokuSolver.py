@@ -4,7 +4,8 @@
 # and solves the Sudoku in a variety of ways.
 #
 # Daniel Winker, April 15, 2024
-# TODO: Save off plots as it solves and make an animation.
+# TODO: Save off plots as it solves and make an animation. (for solver 1)
+# TODO: Make a 51st Sudoku that's really easy, and see if the random solver can get it. If not...fix it? If so, save off images for those too.
 #
 # Solver 1 is approximately how I would solve a sudoku by hand. 
 #       It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
@@ -25,8 +26,12 @@ from functools import reduce
 from matplotlib.patches import Rectangle
 from copy import deepcopy
 import math
+import os
 from pyomo.environ import *
 
+
+if not os.path.exists("images"):
+    os.mkdir("images")
 
 # Read all of the text from the file, one line at a time
 textFile = open("sudoku.txt", 'r')
@@ -51,7 +56,7 @@ for line in fileContent:
 sudoku.append(sudokuArr)  # Add the previous sudoku to our list
 
 
-def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True):
+def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True, save=False):
     """
     This creates a visual to understand how the solver is working.
     Written with ChatGPT.
@@ -71,9 +76,9 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
         if np.all(prevSudoku == _sudoku):
             return 1
 
-    # DEBUG, skip the rules that have already been tested
+    # DEBUG, skip the rules that have already been tested, so we only plot when untested rules are applied
     # We have to skip after the above check, which rejects checks that don't result in a change
-    if rule in [1, 2, 3, 4, 5, 6, 7, 8]:
+    if rule in []:  # [1, 2, 3, 4, 5, 6, 7, 8]:
         return 0
 
     # Create a figure and axis
@@ -141,7 +146,12 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
     plt.title(title)
 
     # Show the plot
-    plt.show()
+    if not save:
+        plt.show()
+    else:
+        title = title.replace(":", "").replace(" ", "")
+        plt.savefig(f"images/{title}.png", bbox_inches='tight')
+        plt.close()
 
     return 0
 
@@ -162,7 +172,7 @@ def prettyPlot(_sudoku, title="", prevSudoku=None, currRows=[], currCols=[], cur
 # *I assume this is a normal approach, but I want to write this without looking up techniques.
 
 
-def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
+def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0, _save=False):
     """
     This is more or less how I solve Sudoku by hand. I didn't look up any Sudoku solving techniques to write
     this function, but I did run across a Numberphile video that taught me a new rule (below as Rule 7), which
@@ -190,12 +200,11 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                 if val != 0:
                     potentialValues[row, col, potentialValues[row,col]!=val] = 0  # Set everything except 'val' to zero
         
-        #prettyPlot(potentialValues, f"Step: {stepCounter}, initial state")
+        prettyPlot(potentialValues, f"Step: {stepCounter}, initial state", save=_save)
     
     elif len(_sudoku.shape) == 3:
         #print(f"Recursed down, depth: {recursionDepth}")
         potentialValues = _sudoku
-
 
     # Iterate over every square until each square only contains one nonzero value
     solved = False
@@ -222,7 +231,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     if (val not in currBox[np.arange(3)!=row%3, :, :]) and (val not in currBox[:, np.arange(3)!=col%3, :]):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set all the invalid values to zero                        
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1, stepCount=stepCounter):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 1", prevValues, [row], [col], [valueIndex], 1, stepCount=stepCounter, save=_save):
                             stepCounter += 1
                         
                     # Rules 2 and 3 (2: special case, 1 value in the square. 3: general case)
@@ -237,7 +246,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         # Special case
                         potentialValues[startRow:startRow+3,startCol:startCol+3,valueIndex] = 0  # Note that this value is taken
                         potentialValues[row, col, valueIndex] = valueIndex + 1  # Re-set this value
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex], rule=2, stepCount=stepCounter):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 2", prevValues, [row], [col], [valueIndex], rule=2, stepCount=stepCounter, save=_save):
                             stepCounter += 1
 
                     elif np.count_nonzero(squareVals) < 9:
@@ -267,7 +276,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                         if (_r * 3 + _c) not in squareIndices:
                                             potentialValues[startRow+_r, startCol+_c, np.nonzero(currSquare)[0]] = 0
 
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), rule=3, stepCount=stepCounter):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 3", prevValues, chosenRows, chosenCols, list(range(9)), rule=3, stepCount=stepCounter, save=_save):
                                     stepCounter += 1
 
 
@@ -316,7 +325,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                             if (_r * 3 + _c) in squareIndices:
                                                 potentialValues[startRow+_r, startCol+_c, removeVals] = 0
 
-                                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9)), 4, stepCount=stepCounter):
+                                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 4", prevValues, chosenRows, chosenCols, list(range(9)), 4, stepCount=stepCounter, save=_save):
                                         stepCounter += 1
 
                     # Rule 5
@@ -328,7 +337,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                         prevValues = deepcopy(potentialValues)
                         potentialValues[row, col, np.arange(9)!=valueIndex] = 0  # Set every value except this one to zero
 
-                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex], 5, stepCount=stepCounter):
+                        if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 5", prevValues, [row], [col], [valueIndex], 5, stepCount=stepCounter, save=_save):
                             stepCounter += 1
 
 
@@ -344,7 +353,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             if np.count_nonzero(potentialValues[row, _i, :]) == 1:
                                 # If it is, then set the current value to zero
                                 potentialValues[row, col, valueIndex] = 0
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6, stepCount=stepCounter):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], [_i], [valueIndex], 6, stepCount=stepCounter, save=_save):
                                     stepCounter += 1
                                 break
 
@@ -368,7 +377,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                     if val in potentialValues[row, boxCol, :]:
                                         containingCols.append(boxCol)
 
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], containingCols, [valueIndex], 6, stepCount=stepCounter):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [row], containingCols, [valueIndex], 6, stepCount=stepCounter, save=_save):
                                     stepCounter += 1
 
                                 break
@@ -380,7 +389,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                             if np.count_nonzero(potentialValues[_i, col, :]) == 1:
                                 # If it is, then set the current value to zero
                                 potentialValues[row, col, valueIndex] = 0
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6, stepCount=stepCounter):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, [_i], [col], [valueIndex], 6, stepCount=stepCounter, save=_save):
                                     stepCounter += 1
                                 break
 
@@ -404,7 +413,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                                     if val in potentialValues[boxRow, col, :]:
                                         containingRows.append(boxRow)
                                 
-                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, containingRows, [col], [valueIndex], 6, stepCount=stepCounter):
+                                if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 6", prevValues, containingRows, [col], [valueIndex], 6, stepCount=stepCounter, save=_save):
                                     stepCounter += 1
                                 break
 
@@ -449,7 +458,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
                     
                     currRows = np.concatenate((np.array(cornerIndices)[:,0], np.array(ringIndices)[:,0]))
                     currCols = np.concatenate((np.array(cornerIndices)[:,1], np.array(ringIndices)[:,1]))
-                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, currRows=currRows, currCols=currCols, currValIndexes=np.arange(9), rule=7, stepCount=stepCounter):
+                    if not prettyPlot(potentialValues, f"Step: {stepCounter}, Rule 7", prevValues, currRows=currRows, currCols=currCols, currValIndexes=np.arange(9), rule=7, stepCount=stepCounter, save=_save):
                         stepCounter += 1
 
 
@@ -484,7 +493,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
             
             #print("Guess: ", potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex])
             potentialValues[chosenSquare[0], chosenSquare[1], chosenValIndex+1:] = 0
-            prettyPlot(potentialValues, f"Step {stepCounter}, Recursion depth {recursionDepth+1}.", potentialValuesCopy, [chosenSquare[0]], [chosenSquare[1]], [chosenValIndex], 8)
+            prettyPlot(potentialValues, f"Step {stepCounter}, Recursion depth {recursionDepth+1}.", potentialValuesCopy, [chosenSquare[0]], [chosenSquare[1]], [chosenValIndex], 8, save=_save)
 
             # Run the solver with this new sudoku. It will return None if the Sudoku is unsolvable.
             returnedSudoku = solver1(potentialValues, stepCounter, recursionDepth+1, itr)
@@ -504,7 +513,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
         if np.any(np.all(potentialValues[:, :, :] == 0, axis=2)):
             if recursionDepth == 0:
                 print(f"Failed! In {stepCounter} steps.")
-                prettyPlot(potentialValues, f"Failed! In {stepCounter} steps.")
+                prettyPlot(potentialValues, f"Failed! In {stepCounter} steps.", save=_save)
             return None
 
         # Check if it's solved
@@ -519,7 +528,7 @@ def solver1(_sudoku, stepCounter=0, recursionDepth=0, itr=0):
 
     if solved:
         print(f"Solved! In {stepCounter} steps.")
-        pass#prettyPlot(potentialValues, f"Solved! In {stepCounter} steps.")
+        prettyPlot(potentialValues, f"Solved! In {stepCounter} steps.", save=_save)
     else:
         print(f"Failed!!!!!!!!!!!!!!!!!!!!!!!!")
 
@@ -546,19 +555,19 @@ def checkSudoku(_sudoku, skipRowCheck=True):
         # Check rows
         if not skipRowCheck:
             if len(set(_sudoku[i, :])) != 9:
-                print("Failed row check")
+                #print("Failed row check")
                 return False
         
         # Check columns
         if len(set(_sudoku[:, i])) != 9:
-            print("Failed column check")
+            #print("Failed column check")
             return False
         
     # Check boxes
     for i in range(3):
         for j in range(3):
-            if len(set(_sudoku[i*3:i*3+3, j*3:j*3+3])) != 9:
-                print("Failed box check")
+            if len(set(_sudoku[i*3:i*3+3, j*3:j*3+3].flatten())) != 9:
+                #print("Failed box check")
                 return False
         
     return True
@@ -578,6 +587,9 @@ def solver2(_sudoku):
 
     I let this run for a while, and after 18 million guesses, I gave up.
     """
+
+    # Plot the initial Sudoku and save it as an image
+    prettyPlot(_sudoku, title=f"Sudoku", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True, save=True)
     
     # 1. Determine which values we need to solve for
     unknownIndices = np.nonzero(_sudoku == 0)
@@ -593,7 +605,7 @@ def solver2(_sudoku):
 
     while True:
         guesses += 1
-        if guesses % 100000 == 0:
+        if guesses % 10000 == 0:
             print(guesses)
 
         # 3. Shuffle each row of randomSudoku
@@ -603,8 +615,12 @@ def solver2(_sudoku):
         _sudokuCopy = deepcopy(_sudoku)  # First make a copy in case the result is invalid
         _sudokuCopy[unknownIndices] = randomSudoku[randomSudoku != 0]
 
+        # Plot the Sudoku guess and save it as an image
+        prettyPlot(_sudokuCopy, title=f"Guess: {guesses:04}", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True, save=True)
+
         # 5. Check the Sudoku. If the solution is correct, return it.
         if checkSudoku(_sudokuCopy):
+            print(guesses)
             return _sudokuCopy
 
 
@@ -647,6 +663,9 @@ def solver3(_sudoku):
     """
 
     sudokuBackup = deepcopy(_sudoku)
+    
+    # Plot the initial Sudoku and save it as an image
+    prettyPlot(_sudoku, title=f"Sudoku", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True, save=True)
 
     # 1. Determine which values we need to solve for, per row
     unknownIndices = []
@@ -697,6 +716,9 @@ def solver3(_sudoku):
                 if not np.any(np.apply_along_axis(lambda x: np.any(np.array(np.unique(x[x != 0], return_counts=True)[1] > 1)), axis=0, arr=_sudokuCopy), axis=0):
                     rowBad = False
             
+                # Plot the Sudoku guess and save it as an image
+                prettyPlot(_sudokuCopy, title=f"Guess: {guesses:04}", prevSudoku=None, currRows=[], currCols=[], currValIndexes=[], rule=-1, stepCount=-1, round=True, save=True)
+
                 cache.add(tuple(randomRow[randomRow!=0]))
 
                 # If we've tried everything possible, then some of the earlier guesses are wrong and we need to restart
@@ -996,10 +1018,20 @@ def solver6(_sudoku, _badSudoku=None):
         solver6(_sudoku, _badSudoku)
 
 
+# ___ Call the solvers below ___
+
+prettyPlot(solver1(sudoku[0], _save=True))
+
+prettyPlot(solver2(sudoku[51]))
+
+prettyPlot(solver3(sudoku[50]))
+
 for i, _sudoku in enumerate(sudoku):
     print(f"Sudoku {i}")
     startTime = time.time()
-    #result = solver1(_sudoku)
-    result = solver4(_sudoku)
+    #result = solver4(_sudoku)
+    result = solver1(_sudoku)
     print(f"Solved in {time.time() - startTime} seconds.")
     prettyPlot(result)
+
+    
