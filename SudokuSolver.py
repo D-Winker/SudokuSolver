@@ -3,14 +3,12 @@
 # Reads the file "sudoku.txt" (from [dimitri] https://github.com/dimitri/sudoku/tree/master)
 # and solves the Sudoku in a variety of ways.
 #
-# Daniel Winker, April 15, 2024
-# TODO: Save off plots as it solves and make an animation. (for solver 1)
-# TODO: Make a 51st Sudoku that's really easy, and see if the random solver can get it. If not...fix it? If so, save off images for those too.
+# Daniel Winker, April 29, 2024
 #
 # Solver 1 is approximately how I would solve a sudoku by hand. 
 #       It solved all 50 Sudoku in 834 seconds, or 16.7 seconds per Sudoku.
-# Solvers 2 and 3 attempt to solve a Sudoku by random guessing. I didn't wait around for them to actually get to
-#       a solution. It's possible there's just a bug in there, but there are a lot of ways to combine 81 digits.
+# Solvers 2 and 3 attempt to solve a Sudoku by random guessing. I made two extra easy Sudoku, 51 and 52, to show that these work.
+#       They take a long time, because there are a lot of possible guesses.
 # Solver 4 uses integer programming. I think this is the "right" way to solve it, based on passing knowledge of Sudoku solvers. 
 #       It solved all 50 Sudoku in 20 seconds! 0.4 seconds per Sudoku!
 # Solver 5 uses a nonlinear solver and solves a Sudoku based on the sums and products of rows, columns, and boxes. 
@@ -573,7 +571,7 @@ def checkSudoku(_sudoku, skipRowCheck=True):
     return True
 
 
-def solver2(_sudoku):
+def solver2(_sudoku, cacheLimit=4000000):
     """
     Solve the Sudoku using Monte Carlo methods, i.e. guessing.
     I had some ideas on reasonable ways to guess at this, but in the 
@@ -585,7 +583,7 @@ def solver2(_sudoku):
     (A second fun fact: if I did the math right, there are 10^50
     ways to have 9 rows of the numbers 1 - 9)
 
-    I let this run for a while, and after 18 million guesses, I gave up.
+    I let this run for a while on Sudoku 1, and after 18 million guesses, I gave up.
     """
 
     # Plot the initial Sudoku and save it as an image
@@ -603,13 +601,21 @@ def solver2(_sudoku):
 
     guesses = 0
 
+    cache = set({})
+
     while True:
         guesses += 1
         if guesses % 10000 == 0:
             print(guesses)
 
-        # 3. Shuffle each row of randomSudoku
-        _ = np.apply_along_axis(np.random.shuffle, axis=1, arr=randomSudoku)
+        # 3. Shuffle each row of randomSudoku until we get a permutation that hasn't been tried
+        permutationInCache = True
+        while permutationInCache:
+            _ = np.apply_along_axis(np.random.shuffle, axis=1, arr=randomSudoku)
+            permutationInCache = tuple(randomSudoku[randomSudoku!=0]) in cache
+        
+        if len(cache) < cacheLimit:
+            cache.add(tuple(randomSudoku[randomSudoku!=0].flatten()))
 
         # 4. Replace the unknown values in _sudoku with the random values from randomSudoku
         _sudokuCopy = deepcopy(_sudoku)  # First make a copy in case the result is invalid
