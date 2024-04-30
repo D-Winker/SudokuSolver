@@ -7,7 +7,7 @@ So, I decided it was time to write a Sudoku solver. For the sake of the exercise
 SudokuSolver.py contains the six solvers, a function to draw out the Sudoku (complete, incomplete, and in-progress), a function to check a Sudoku, and code to read in and format the Sudoku in the text file sudoku.txt  
 sudoku.txt contains 50 Sudoku puzzles. I copied this file from from [dimitri] https://github.com/dimitri/sudoku/tree/master  
   
-Below are descriptions of each solver and details about how they work. Solvers 1 and 4 work, solvers 2 and 3 might work, if given enough time, solvers 5 and 6 do not work. First, the rules  
+Below are descriptions of each solver and details about how they work. Solvers 1 and 4 work, solvers 2 and 3 work, but take an extremely long time to find a solution on all but the easiest Sudoku, solvers 5 and 6 do not work. First, the rules  
 
 ##### Sudoku Rules  
 A 9×9 square must be filled in with numbers from 1-9 with no repeated numbers in each line, horizontally or vertically. To challenge you more, there are 3×3 squares marked out in the grid, and each of these squares can't have any repeat numbers either.  
@@ -49,13 +49,17 @@ And the informal Rule 8: guess. Guessing is done using recursion: a guess is mad
     
 ##### Solver 2: "Random Guessing"  
 This solver randomly places the numbers missing from each row, then checks for validity. If it's invalid, it tries again.  
+Incorrect guesses are cached so they aren't guessed again; this saves the overhead of re-checking the guess.  
   
-I don't see any reason this wouldn't work, but consider the odds of guessing correctly. A uniquely solvable Sudoku has at least 17 given values; let's assume 18 given values for convenience. Let's assume there are 2 given values per row. There are 7P7 ways to place the unknown numbers in each of the 9 rows, so there are (7P7)^9 = 2.1 x 10^33 potential guesses. The odds of guessing the correct solution are very, very close to zero.  
+This is a terrible way to solve a Sudoku, but it does work. Consider that a uniquely solvable Sudoku has at least 17 given values; let's assume a puzzle with 18 given values for convenience. Assume there are 2 given values per row. There are 7P7 ways to place the unknown numbers in each of the 9 rows, so there are (7P7)^9 = 2.1 x 10^33 potential guesses.   
+  
+(Sudoku 52 was made as a very, very easy version of Sudoku 1, so this solver could find a solution in a reasonable amount of time)  
   
 ##### Solver 3: "Slightly Better Random Guessing"  
-This solver randomly places the numbers missing from each row, one row at a time, and checks for validity after each guess. Considering the overhead of guessing, I think this approach is actually slower than Solver 2, but my rough upper bound puts the number of possible guesses at 1.8 x 10^20. That's a huge improvement! It still isn't reasonable, though. Also, I'm not sure it's even an improvement - as written: the idea is, if each subsequent row is constrained by the preceding row, then there are only 1.8 x 10^20 possibilities. _But_, I don't have a way to generate a valid row, so I generate and guess, which defeats the purpose.  
+This solver randomly places the numbers missing from each row, one row at a time, and checks for validity after each guess. My rough upper bound puts the number of possible guesses at 1.8 x 10^20. That's a huge improvement! It still isn't reasonable, though.    
+The details of how I got to that number are in the comment block for Solver 3, in the code. It's an interesting problem, and I couldn't find a solution out there. Let me know if you know of one!  
   
-Anyway, the details of how I got to that number are in the comment block for Solver 3, in the code. It's an interesting problem, and I couldn't find a solution out there! Hence my upper bound in lieu of an exact solution.  
+(Sudoku 51 was made as a very easy version of Sudoku 1, so this solver could find a solution in a reasonable amount of time)  
   
 ##### Solver 4: "Integer Programming"  
 My passing knowledge of Sudoku solvers tells me that integer programming is the "correct" way to solve a Sudoku in code. (Don't take my word for it, though!)  
