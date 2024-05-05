@@ -5,7 +5,7 @@ It's been 19 years.
 So, I decided it was time to write a Sudoku solver. For the sake of the exercise, I started this project without looking into best practices, the current state of the art, or the hundreds of existing Sudoku solver packages, open source projects, and college homework assignments that must exist. In the end I wrote six different solvers. Two of them work, two of them do not work, and two of them might work if they were able to run for a really, really long time. The solvers are described in more detail below.  
   
 SudokuSolver.py contains the six solvers, a function to draw out the Sudoku (complete, incomplete, and in-progress), a function to check a Sudoku, and code to read in and format the Sudoku in the text file sudoku.txt  
-sudoku.txt contains 50 Sudoku puzzles. I copied this file from from [dimitri] https://github.com/dimitri/sudoku/tree/master  
+sudoku.txt contains 50 Sudoku puzzles. I copied this file from from [dimitri](https://github.com/dimitri/sudoku/tree/master)  
   
 Below are descriptions of each solver and details about how they work. Solvers 1 and 4 work, solvers 2 and 3 work, but take an extremely long time to find a solution on all but the easiest Sudoku, solvers 5 and 6 do not work. First, the rules  
 
@@ -46,6 +46,8 @@ The [Phistomefel Ring](https://www.youtube.com/watch?v=pezlnN4X52g)
 The set of numbers in the squares ringing the center box and the set of numbers in the four groups of four corner boxes are identical.  
   
 And the informal Rule 8: guess. Guessing is done using recursion: a guess is made by selecting a value for a square. The resulting values are passed, recursively, to solver 1. If solver 1 fails, it will return the failure up the stack, and a different guess will be made. If the guess is correct, the solved Sudoku will be returned up the stack, back to the original call.  
+  
+[See the solver in action in this YouTube video](https://www.youtube.com/watch?v=5vuLu4zFrVw)  
     
 ##### Solver 2: "Random Guessing"  
 This solver randomly places the numbers missing from each row, then checks for validity. If it's invalid, it tries again.  
@@ -55,11 +57,15 @@ This is a terrible way to solve a Sudoku, but it does work. Consider that a uniq
   
 (Sudoku 52 was made as a very, very easy version of Sudoku 1, so this solver could find a solution in a reasonable amount of time)  
   
+[See the solver in action in this YouTube video](https://www.youtube.com/watch?v=H44MTZD-kA4)  
+  
 ##### Solver 3: "Slightly Better Random Guessing"  
 This solver randomly places the numbers missing from each row, one row at a time, and checks for validity after each guess. My rough upper bound puts the number of possible guesses at 1.8 x 10^20. That's a huge improvement! It still isn't reasonable, though.    
 The details of how I got to that number are in the comment block for Solver 3, in the code. It's an interesting problem, and I couldn't find a solution out there. Let me know if you know of one!  
   
 (Sudoku 51 was made as a very easy version of Sudoku 1, so this solver could find a solution in a reasonable amount of time)  
+  
+[See the solver in action in this YouTube video](https://www.youtube.com/watch?v=dO5klPl4jHM)  
   
 ##### Solver 4: "Integer Programming"  
 My passing knowledge of Sudoku solvers tells me that integer programming is the "correct" way to solve a Sudoku in code. (Don't take my word for it, though!)  
