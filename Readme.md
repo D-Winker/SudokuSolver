@@ -2,12 +2,12 @@
    
 I've played through 53 of the 120 Sudoku in the Nintendo DS game Brain Age. In 19 years.  
   
-So, I decided it was time to write a Sudoku solver. For the sake of the exercise, I started this project without looking into best practices, the current state of the art, or the hundreds of existing Sudoku solver packages, open source projects, and college homework assignments that must exist. In the end I wrote six different solvers. Two of them work, two of them do not work, and two of them might work if they were able to run for a really, really long time. The solvers are described in more detail below.  
+So, I decided it was time to write a Sudoku solver. For the sake of the exercise, I started this project without looking into best practices, the current state of the art, or the hundreds of existing Sudoku solver packages, open source projects, and college homework assignments that must exist. In the end I wrote six different solvers. Four of them work! Two of them do not work. The solvers are described in more detail below.  
   
-SudokuSolver.py contains the six solvers, a function to draw out the Sudoku (complete, incomplete, and in-progress), a function to check a Sudoku, and code to read in and format the Sudoku in the text file sudoku.txt  
-sudoku.txt contains 50 Sudoku puzzles. I copied this file from from [dimitri](https://github.com/dimitri/sudoku/tree/master)  
+SudokuSolver.py contains the six solvers, a function to draw the Sudoku (complete, incomplete, and in-progress), a function to check a Sudoku, and code to read in and format the Sudoku from the text file sudoku.txt  
+sudoku.txt contains 52 Sudoku puzzles. I copied this file from from [dimitri](https://github.com/dimitri/sudoku/tree/master) then added two additional Sudoku that are easier versions of the first Sudoku.  
   
-Below are descriptions of each solver and details about how they work. Solvers 1 and 4 work, solvers 2 and 3 work, but take an extremely long time to find a solution on all but the easiest Sudoku, solvers 5 and 6 do not work. First, the rules  
+Below are descriptions of each solver and details about how they work. Solvers 1 and 4 work, solvers 2 and 3 work, but take an extremely long time to find a solution on all but the easiest Sudoku, and solvers 5 and 6 do not work. First, the rules  
 
 ##### Sudoku Rules  
 A 9×9 square must be filled in with numbers from 1-9 with no repeated numbers in each line, horizontally or vertically. To challenge you more, there are 3×3 squares marked out in the grid, and each of these squares can't have any repeat numbers either.  
